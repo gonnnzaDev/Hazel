@@ -80,12 +80,16 @@ Una sala dentro de un servidor. Hay canales de texto y de voz.
 
 | Método | Ruta | Qué hace |
 |---|---|---|
-| `[x]` | `GET /health` | Liveness. Responde si el proceso vive. |
+| `[x]` | `GET /health` | Liveness. Responde si el proceso vivo. |
 | `[x]` | `GET /health/ready` | Readiness. Verifica DB y Kafka. 503 si no puede servir. |
-| `[ ]` | `GET /api/v1/node` | Ficha del nodo: nombre, versión, capacidades. |
-| `[ ]` | `POST /api/v1/node/start` | Abre el puerto. Los servidores inactivos siguen inactivos. |
-| `[ ]` | `POST /api/v1/node/stop` | Cierra el puerto. **Conserva todos los datos.** |
-| `[ ]` | `GET /api/v1/node/address` | Dirección real para compartir (resuelve la IP local). |
+| `[x]` | `GET /api/v1/node` | Ficha del nodo: versión, puerto, capacidades. |
+| `[x]` | `GET /api/v1/node/address` | Dirección real para compartir. Resuelve la IP local. |
+
+> **No hay `POST /node/start` ni `POST /node/stop`.** El puerto del nodo es el
+> del proceso: si el nodo está corriendo, el puerto está abierto. Un endpoint
+> HTTP que apaga el propio proceso HTTP es raro de razonar y de testear, y no
+> aporta nada que `Ctrl+C` o `docker compose stop` no hagan mejor. El dueño
+> apaga su nodo por fuera y los datos quedan intactos.
 
 ### `GET /api/v1/node/address` — el punto crítico
 
@@ -93,21 +97,25 @@ Este endpoint resuelve el problema de que `0.0.0.0` no es conectable.
 
 ```json
 {
-  "host": "192.168.1.50",
   "port": 7272,
+  "bind_host": "0.0.0.0",
   "is_wildcard": true,
-  "interface": "wifi",
-  "is_reachable": true,
+  "recommended": "192.168.1.50",
   "candidates": [
-    { "host": "192.168.1.50", "interface": "wifi", "private": true,  "recommended": true },
-    { "host": "10.8.0.2",     "interface": "tun0", "private": true,  "recommended": false }
+    { "host": "192.168.1.50", "family": "ipv4", "private": true, "loopback": false },
+    { "host": "10.8.0.2",     "family": "ipv4", "private": true, "loopback": false }
   ]
 }
 ```
 
-El backend **no adivina una sola respuesta**: devuelve todas las interfaces
-candidatas y marca cuál recomienda. Un nodo puede tener VPN, docker, o tres
-placas de red, y elegir mal es peor que mostrar las opciones.
+El backend **no adivina una sola respuesta**: devuelve todas las direcciones
+encontradas, ordenadas (IPv4 privada, IPv6 privada, pública, loopback), y
+`recommended` es solo la primera. Un nodo puede tener VPN, docker, o tres placas
+de red, y elegir mal es peor que mostrar las opciones.
+
+Si la máquina no tiene ninguna dirección usable —un contenedor sin red, por
+ejemplo— devuelve `candidates: []` y `recommended: null` en vez de fallar. El
+cliente muestra un mensaje útil.
 
 **Pendiente de tu decisión:** ¿le pedimos al dueño que elija su IP al desplegar, o
 lo resolvemos con detección automática como arriba?
@@ -127,7 +135,7 @@ lo resolvemos con detección automática como arriba?
 | `[x]` | `POST /api/v1/servers/{server_id}/activate` | Servidor activo. |
 | `[x]` | `POST /api/v1/servers/{server_id}/deactivate` | Servidor inactivo, conserva datos. |
 | `[x]` | `POST /api/v1/servers/{server_id}/heartbeat` | Latido del proceso. |
-| `[x]` | `GET /api/v1/servers/{server_id}/address` | Dirección del servidor. |
+| `[x]` | `GET /api/v1/servers/{server_id}/address` | Dirección: el puerto del nodo + su slug. |
 
 ### Estados
 
@@ -440,8 +448,10 @@ que las resuelvas:
 1. **Kafka en la PC del usuario.** Pediste Kafka para el chat, pero es una
    dependencia pesada para un proceso de escritorio. ¿Kafka embebido, Kafka
    externo, o un bus con dos implementaciones?
-2. **Nodo con N servidores vs nodo = 1 servidor.** Ver sección 0.
-3. **Resolución de la IP compartible.** Ver sección 1.
+2. ~~Nodo con N servidores vs nodo = 1 servidor.~~ **Resuelto:** el nodo tiene N
+   servidores. Ver sección 0. Si querés la lectura literal, es un refactor.
+3. ~~Resolución de la IP compartible.~~ **Parcial:** la API devuelve todas las
+   candidatas y el cliente elige. Falta definir cómo lo muestra el cliente de PC.
 4. **Descubrimiento de servidores.** Ver sección 8.
 5. **Dónde viven los archivos.** Ver sección 9.
 6. **Roles personalizados.** ¿Hace falta, o tres roles alcanza para la primera
