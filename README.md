@@ -107,8 +107,12 @@ uv sync                        # instala dependencias y crea el venv
 cp .env.example .env           # ajustá la configuración
 docker compose up -d           # levanta postgres + kafka
 uv run alembic upgrade head    # aplica migraciones
-uv run recap-api               # levanta la API
+uv run python -m core          # levanta la API
 ```
+
+> Para arrancar el nodo se usa `uv run python -m core`. El console script
+> `recop-api` también existe y funciona en instalaciones reales del paquete,
+> pero algunas versiones de `uv` fallan al lanzarlo en modo `uv run`.
 
 ### Calidad
 

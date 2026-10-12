@@ -1,0 +1,60 @@
+# Recop — infraestructura de desarrollo
+#
+# PostgreSQL y Kafka para trabajar en local. Cada usuario de Recop corre su
+# propio nodo, pero en desarrollo levantamos estas dependencias una sola vez.
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: recop-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-recop}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-recop}
+      POSTGRES_DB: ${POSTGRES_DB:-recop}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-recop} -d ${POSTGRES_DB:-recop}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # Kafka en modo KRaft (sin ZooKeeper), que es el setup mínimo desde Kafka 3.3.
+  kafka:
+    image: bitnami/kafka:3.9
+    container_name: recop-kafka
+    restart: unless-stopped
+    ports:
+      # Solo se publica el listener externo. El interno (kafka:9092) queda en
+      # la red de Docker para los demás servicios del compose.
+      - "${KAFKA_EXTERNAL_PORT:-29092}:29092"
+    environment:
+      KAFKA_CFG_NODE_ID: "0"
+      KAFKA_CFG_PROCESS_ROLES: "broker,controller"
+      KAFKA_CFG_CONTROLLER_QUORUM_VOTERS: "0@kafka:9093"
+      KAFKA_CFG_LISTENERS: "PLAINTEXT://:9092,CONTROLLER://:9093,EXTERNAL://:29092"
+      KAFKA_CFG_ADVERTISED_LISTENERS: "PLAINTEXT://kafka:9092,EXTERNAL://localhost:29092"
+      KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP: "CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT"
+      KAFKA_CFG_CONTROLLER_LISTENER_NAMES: "CONTROLLER"
+      KAFKA_CFG_INTER_BROKER_LISTENER_NAME: "PLAINTEXT"
+      # Single node: todo en un solo broker, suficiente para desarrollo.
+      KAFKA_CFG_OFFSETS_TOPIC_REPLICATION_FACTOR: "1"
+      KAFKA_CFG_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: "1"
+      KAFKA_CFG_TRANSACTION_STATE_LOG_MIN_ISR: "1"
+      KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE: "true"
+      ALLOW_PLAINTEXT_LISTENER: "yes"
+    volumes:
+      - kafka_data:/bitnami/kafka
+    healthcheck:
+      test: ["CMD-SHELL", "kafka-topics.sh --bootstrap-server localhost:9092 --list || exit 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 12
+      start_period: 20s
+
+volumes:
+  postgres_data:
+  kafka_data:
