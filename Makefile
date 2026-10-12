@@ -1,6 +1,6 @@
 # Recop — atajos de desarrollo
 .DEFAULT_GOAL := help
-.PHONY: help install up down logs api migrate revision test lint format typecheck check clean
+.PHONY: help install up down logs api migrate revision test test-integration lint format typecheck check clean
 
 help: ## Mostrar esta ayuda
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
@@ -34,7 +34,15 @@ migrate: ## Aplicar migraciones
 revision: ## Crear una migración: make revision m="mensaje"
 	uv run alembic revision --autogenerate -m "$(m)"
 
-test: ## Correr los tests
+test: ## Correr los tests (los de integración se omiten sin RECOP_TEST_DATABASE_URL)
+	uv run pytest
+
+test-integration: ## Correr los tests contra una base real (requiere PostgreSQL)
+	@if [ -z "$(RECOP_TEST_DATABASE_URL)" ]; then \
+		echo "Falta RECOP_TEST_DATABASE_URL. Ej:"; \
+		echo "  make test-integration RECOP_TEST_DATABASE_URL=postgresql+asyncpg://recop:recop@localhost:5432/recop_test"; \
+		exit 1; \
+	fi
 	uv run pytest
 
 lint: ## Lint

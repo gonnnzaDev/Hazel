@@ -17,6 +17,7 @@ from dataclasses import dataclass
 from fastapi import APIRouter
 
 from apps.common.api.router import router as common_router
+from apps.servers.api.router import router as servers_router
 
 
 @dataclass(frozen=True, slots=True)
@@ -31,7 +32,10 @@ class AppConfig:
 
 # El orden importa: Alembic autogenera migraciones recorriendo los modelos en
 # este orden, así que las apps base van primero.
-INSTALLED_APPS: tuple[AppConfig, ...] = (AppConfig(name="common", router=common_router),)
+INSTALLED_APPS: tuple[AppConfig, ...] = (
+    AppConfig(name="common", router=common_router),
+    AppConfig(name="servers", router=servers_router, prefix="/servers", tags=("servidores",)),
+)
 
 
 class AppRegistry:

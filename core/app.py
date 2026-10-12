@@ -2,18 +2,22 @@
 
 from __future__ import annotations
 
+import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from fastapi import APIRouter, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from apps.servers.services import mark_all_inactive
 from core import __version__
 from core.api.errors import register_exception_handlers
 from core.api.health import router as health_router
 from core.config import get_settings
-from core.db.session import dispose_engine
+from core.db.session import dispose_engine, session_scope
 from core.registry import app_registry
+
+logger = logging.getLogger(__name__)
 
 
 def create_api_router() -> APIRouter:
@@ -29,11 +33,27 @@ def create_app() -> FastAPI:
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         """Startup y shutdown del proceso.
 
-        Acá se inicializan y se cierran los recursos externos (DB, Kafka,
-        consumidores). Hoy solo la DB; Kafka entra con la app de chat.
+        Al arrancar se reconcilia el estado de los servidores: cualquier cosa que
+        figure `ACTIVE` en la base pasó a estar inactiva, porque si el proceso
+        anterior se cerró, ese puerto ya no está escuchando. Ver
+        `apps.servers.services.mark_all_inactive`.
         """
+        await _reconcile_server_state()
+
         yield
+
         await dispose_engine()
+
+    async def _reconcile_server_state() -> None:
+        """Deja el estado de los servidores consistente con la realidad."""
+        try:
+            async with session_scope() as session:
+                await mark_all_inactive(session)
+        except Exception:
+            # Si la base no está disponible no queremos impedir que el nodo
+            # levante: la API igual responde, solo que sin poder servir chat
+            # hasta que la DB vuelva.
+            logger.exception("no se pudo reconciliar el estado de los servidores al arrancar")
 
     app = FastAPI(
         title="Recop",
