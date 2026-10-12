@@ -28,28 +28,39 @@ computadora.
 
 ## Instalación
 
-### Docker
-
-La forma más segura de que todos tengan exactamente lo mismo. Un comando:
+### Un comando
 
 ```bash
 git clone https://github.com/gonnnzaDev/recop
 cd recop
+./scripts/setup.sh          # Linux, macOS y Android (Termux)
+```
+
+```powershell
+.\scripts\setup.ps1         # Windows
+```
+
+El script instala todo lo que falta, genera la configuración y levanta las bases
+de datos. **No hace falta que tengas Python instalado**: `uv` lo trae.
+
+Funciona igual en las cuatro plataformas porque las versiones salen de `uv.lock`
+y `.python-version`, no de lo que tengas en tu máquina.
+
+Instrucciones por plataforma en [`docs/installation.md`](docs/installation.md).
+
+### Docker
+
+```bash
 cp .env.example .env
 docker compose up
 ```
 
-Levanta el nodo, PostgreSQL y Kafka. La API queda en <http://localhost:7272/docs>.
+Sin scripts, sin instalar nada. La imagen es multi-arquitectura y funciona en
+Linux, macOS, Windows y Android (por Termux).
 
-> Hay que poner un `RECOP_SECRET_KEY` real en el `.env` antes de arrancar.
-> Si te lo olvidas, el compose te avisa en vez de arrancar con el de ejemplo.
-
-Funciona en Linux, macOS, Windows y Android (por Termux), porque la imagen es
-multi-arquitectura.
+Más detalle en [`docs/docker.md`](docs/docker.md).
 
 ### A mano
-
-Necesitás Python 3.13+, PostgreSQL y Kafka:
 
 ```bash
 uv sync                      # instala las dependencias
@@ -59,11 +70,6 @@ uv run alembic upgrade head
 uv run python -m core
 ```
 
-> **Próximamente:** un script único que instale todo solo y funcione en Linux,
-> macOS, Windows y Android (Termux). Hoy todavía hay que hacer los pasos a mano.
-
-Más detalle en [`docs/docker.md`](docs/docker.md).
-
 ---
 
 ## Uso
@@ -71,6 +77,13 @@ Más detalle en [`docs/docker.md`](docs/docker.md).
 ```bash
 make up        # levanta PostgreSQL y Kafka
 make api       # arranca el nodo
+```
+
+Sin `make` también funciona:
+
+```bash
+./scripts/recop.sh up
+./scripts/recop.sh api
 ```
 
 Después, en otra terminal:
@@ -155,6 +168,7 @@ va a servir igual para el futuro cliente mobile.
 
 | Documento | Para qué |
 |---|---|
+| [`docs/installation.md`](docs/installation.md) | Instalación en Linux, macOS, Windows y Android |
 | [`docs/api.md`](docs/api.md) | Los endpoints y qué hace cada uno |
 | [`docs/architecture.md`](docs/architecture.md) | Por qué se decidió cada cosa |
 | [`docs/docker.md`](docs/docker.md) | Cómo correr con Docker |
@@ -171,7 +185,6 @@ Lo que falta:
 - [ ] Nicknames y entrada a un servidor
 - [ ] Canales
 - [ ] Chat con Kafka y WebSocket
-- [ ] Instaladores para Windows, macOS, Linux y Android
 
 ---
 
