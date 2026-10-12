@@ -52,11 +52,17 @@ async def session() -> AsyncSession:
 
 @pytest_asyncio.fixture
 async def server(session: AsyncSession):  # type: ignore[no-untyped-def]
-    """Un servidor activo, listo para que entren miembros."""
+    """Un grupo activo, listo para que entren miembros.
+
+    `create_server` solo registra la fila y la deja en `CREATING`: activar un
+    grupo es trabajo del proceso del nodo, que recién lo hace cuando el proceso
+    del grupo responde. Acá, para no depender del supervisor, se activa a mano.
+    """
     payload = ServerCreate(
         name="Casa de Luis", slug="casa-de-luis", owner_nickname="luis", max_members=50
     )
-    return await server_services.create_server(session, payload)
+    created = await server_services.create_server(session, payload, port=7272)
+    return await server_services.activate_server(session, created)
 
 
 async def join(session: AsyncSession, server, nickname: str):  # type: ignore[no-untyped-def]
@@ -200,11 +206,15 @@ class TestIdentityIsScopedToServer:
         server_a = await server_services.create_server(
             session,
             ServerCreate(name="Casa de Luis", slug="casa-de-luis", owner_nickname="luis"),
+            port=7272,
         )
         server_b = await server_services.create_server(
             session,
             ServerCreate(name="Gym", slug="gym-de-martes", owner_nickname="mari"),
+            port=7273,
         )
+        await server_services.activate_server(session, server_a)
+        await server_services.activate_server(session, server_b)
 
         ana_a, token_a, _ = await services.join_server(
             session, server_a, JoinRequest(nickname="ana")
@@ -452,8 +462,9 @@ class TestReads:
     ) -> None:  # type: ignore[no-untyped-def]
         """Los miembros son de un servidor. Buscar en el equivocado no los ve."""
         other = await server_services.create_server(
-            session, ServerCreate(name="Gym", slug="gym", owner_nickname="mari")
+            session, ServerCreate(name="Gym", slug="gym", owner_nickname="mari"), port=7273
         )
+        await server_services.activate_server(session, other)
         await join(session, other, "ana")
 
         with pytest.raises(NotFoundError):

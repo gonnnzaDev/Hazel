@@ -47,6 +47,13 @@ class ChannelBase(BaseModel):
 class ChannelCreate(ChannelBase):
     is_default: bool = False
 
+    @field_validator("kind", mode="after")
+    @classmethod
+    def validar_kind(cls, value):
+        if value not in ["text", "voice"]:
+            raise ValueError(f"'{value}' no es un kind válido. Use 'text' o 'voice'.")
+        return value
+
 
 class ChannelRead(ChannelBase):
     model_config = ConfigDict(from_attributes=True)
@@ -54,6 +61,7 @@ class ChannelRead(ChannelBase):
     id: RecordId
     server_id: RecordId
     is_default: bool
+    live_room_id: str | None = None
 
 
 class ServerBase(BaseModel):
@@ -142,6 +150,34 @@ class ServerListResponse(BaseModel):
     """Listado paginado de servidores."""
 
     items: list[ServerRead]
+    total: int
+    limit: int
+    offset: int
+
+
+class MessageCreate(BaseModel):
+    """Payload para crear un mensaje de texto."""
+
+    content: Annotated[str, Field(min_length=1, max_length=2000)]
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class MessageRead(BaseModel):
+    """Un mensaje de texto mostrado al cliente."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: RecordId
+    author_nickname: str
+    content: str
+    created_at: datetime
+
+
+class MessageListResponse(BaseModel):
+    """Listado paginado de mensajes."""
+
+    items: list[MessageRead]
     total: int
     limit: int
     offset: int
