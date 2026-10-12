@@ -141,8 +141,9 @@ make test-integration RECOP_TEST_DATABASE_URL=postgresql+asyncpg://recop:recop@l
 recop/
 ├── apps/            # cada módulo es autocontenido
 │   ├── common/      #   tipos, errores, reglas de nickname
+│   ├── node/        #   el proceso y su dirección
 │   ├── servers/     #   ciclo de vida del servidor
-│   ├── identity/    #   nicknames y tokens      ← pendiente
+│   ├── identity/    #   nicknames, tokens y roles
 │   ├── channels/    #   salas de chat           ← pendiente
 │   └── chat/        #   Kafka + WebSocket       ← pendiente
 ├── core/            # configuración, base de datos, app factory
@@ -180,9 +181,14 @@ va a servir igual para el futuro cliente mobile.
 
 Es una beta temprana. El backend de los servidores ya anda; el chat todavía no.
 
+Lo que anda:
+
+- [x] Ciclo de vida del servidor (desplegar, apagar sin perder datos, reencender)
+- [x] Nicknames: entrar a un servidor con un nombre, sin cuentas globales
+- [x] Roles, tokens por servidor, kicked y expelled
+
 Lo que falta:
 
-- [ ] Nicknames y entrada a un servidor
 - [ ] Canales
 - [ ] Chat con Kafka y WebSocket
 

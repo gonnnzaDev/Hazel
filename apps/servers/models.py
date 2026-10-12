@@ -28,6 +28,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from apps.common.types import RecordId, new_id
+from apps.identity.models import Member
 from apps.servers.states import ServerStatus
 from core.db.base import Base
 
@@ -101,6 +102,12 @@ class Server(Base):
         back_populates="server",
         cascade="all, delete-orphan",
         order_by="Channel.position",
+    )
+
+    members: Mapped[list[Member]] = relationship(
+        back_populates="server",
+        cascade="all, delete-orphan",
+        order_by="Member.nickname",
     )
 
     __table_args__ = (CheckConstraint("max_members > 0", name="positive_max_members"),)
