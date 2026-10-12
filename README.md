@@ -30,7 +30,7 @@ computadora.
 
 ### Docker
 
-La forma más segura de que todos tengan exactamente lo mismo:
+La forma más segura de que todos tengan exactamente lo mismo. Un comando:
 
 ```bash
 git clone https://github.com/gonnnzaDev/recop
@@ -39,6 +39,14 @@ cp .env.example .env
 docker compose up
 ```
 
+Levanta el nodo, PostgreSQL y Kafka. La API queda en <http://localhost:7272/docs>.
+
+> Hay que poner un `RECOP_SECRET_KEY` real en el `.env` antes de arrancar.
+> Si te lo olvidas, el compose te avisa en vez de arrancar con el de ejemplo.
+
+Funciona en Linux, macOS, Windows y Android (por Termux), porque la imagen es
+multi-arquitectura.
+
 ### A mano
 
 Necesitás Python 3.13+, PostgreSQL y Kafka:
@@ -46,13 +54,15 @@ Necesitás Python 3.13+, PostgreSQL y Kafka:
 ```bash
 uv sync                      # instala las dependencias
 cp .env.example .env
-docker compose up -d         # solo PostgreSQL + Kafka
+docker compose -f docker-compose.dev.yml up -d
 uv run alembic upgrade head
 uv run python -m core
 ```
 
 > **Próximamente:** un script único que instale todo solo y funcione en Linux,
 > macOS, Windows y Android (Termux). Hoy todavía hay que hacer los pasos a mano.
+
+Más detalle en [`docs/docker.md`](docs/docker.md).
 
 ---
 
@@ -145,8 +155,9 @@ va a servir igual para el futuro cliente mobile.
 
 | Documento | Para qué |
 |---|---|
-| [`docs/api.md`](docs/api.md) | Los 57 endpoints y qué hace cada uno |
+| [`docs/api.md`](docs/api.md) | Los endpoints y qué hace cada uno |
 | [`docs/architecture.md`](docs/architecture.md) | Por qué se decidió cada cosa |
+| [`docs/docker.md`](docs/docker.md) | Cómo correr con Docker |
 | [`CONTRIBUTING.md`](CONTRIBUTING.md) | Cómo contribuir y cómo está armado el código |
 
 ---

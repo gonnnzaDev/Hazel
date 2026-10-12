@@ -1,0 +1,67 @@
+# Contexto de build de la imagen de Recop.
+#
+# Acá va todo lo que NO tiene que entrar al daemon de Docker. El contexto se
+# manda entero antes de construir, así que sin esto un `.venv/` de 200 MB
+# slows cada build sin necesidad.
+
+# ─── Python ───────────────────────────────────────────────────────────────────
+.venv/
+venv/
+env/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+build/
+dist/
+
+# ─── Configuración local ──────────────────────────────────────────────────────
+# Nunca se copia un .env real a la imagen: el entrypoint arma la configuración a
+# partir de variables de entorno.
+.env
+.env.*
+!.env.example
+
+# ─── Datos locales ────────────────────────────────────────────────────────────
+postgres_data/
+kafka_data/
+*.sqlite
+*.sqlite3
+*.db
+*.deb
+*.tar.gz
+*.whl
+
+# ─── VCS y editores ───────────────────────────────────────────────────────────
+.git/
+.gitignore
+.github/
+.idea/
+.vscode/
+*.swp
+.DS_Store
+
+# ─── Desarrollo: no va a runtime ──────────────────────────────────────────────
+tests/
+Makefile
+docker-compose.yml
+docker-compose.dev.yml
+scripts/
+
+# ─── Docs: no hacen falta en runtime ──────────────────────────────────────────
+docs/
+*.md
+!README.md
+
+# ─── Lo que la imagen sí necesita (explícito por si acaso) ───────────────────
+!pyproject.toml
+!uv.lock
+!alembic.ini
+!docker-entrypoint.sh
+!apps/
+!core/
+!migrations/
