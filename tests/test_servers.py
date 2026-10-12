@@ -71,8 +71,6 @@ def make_payload(**overrides: object) -> ServerCreate:
         "name": "Casa de Luis",
         "slug": "casa-de-luis",
         "owner_nickname": "luis",
-        "bind_host": "0.0.0.0",
-        "bind_port": 7272,
         "max_members": 50,
         "channels": [],
     }
@@ -159,25 +157,21 @@ class TestCreateServer:
         await services.create_server(session, make_payload())
 
         with pytest.raises(ConflictError) as exc:
-            await services.create_server(session, make_payload(bind_port=7273))
+            await services.create_server(session, make_payload())
         assert exc.value.code == "slug_taken"
 
-    async def test_rejects_port_already_in_use(self, session: AsyncSession) -> None:
-        """Dos servidores activos no pueden escuchar en el mismo puerto."""
-        await services.create_server(session, make_payload())
+    async def test_many_servers_share_the_node_port(self, session: AsyncSession) -> None:
+        """El puerto es del nodo, no del servidor.
 
-        with pytest.raises(ConflictError) as exc:
-            await services.create_server(session, make_payload(slug="otro-casa"))
-        assert exc.value.code == "port_taken"
+        Por eso se pueden crear varios servidores sin que uno le robe el puerto
+        al otro: comparten el listener del proceso.
+        """
+        for i in range(3):
+            created = await services.create_server(session, make_payload(slug=f"servidor-{i}"))
+            assert created.status is ServerStatus.ACTIVE
 
-    async def test_freed_port_can_be_reused(self, session: AsyncSession) -> None:
-        """Un servidor apagado libera su puerto."""
-        first = await services.create_server(session, make_payload())
-        await services.deactivate_server(session, first)
-
-        second = await services.create_server(session, make_payload(slug="casa-de-ana"))
-        assert second.bind_port == 7272
-        assert second.status is ServerStatus.ACTIVE
+        _found, total = await services.list_servers(session, limit=10, offset=0)
+        assert total == 3
 
     async def test_persists_to_the_database(self, session: AsyncSession) -> None:
         """No alcanza con el objeto en memoria: tiene que estar en la tabla."""
@@ -279,23 +273,19 @@ class TestActivate:
 
         assert result.status is ServerStatus.ACTIVE
 
-    async def test_cannot_activate_on_a_taken_port(self, session: AsyncSession) -> None:
-        """No se puede encender un servidor cuyo puerto tomó otro."""
+    async def test_activate_after_another_server_was_created(self, session: AsyncSession) -> None:
+        """Apagar, crear otro y volver a encender no choca con nada.
+
+        Es el caso directo de que el puerto es compartido: no hay conflicto de
+        puertos que pueda bloquear la reactivación.
+        """
         first = await services.create_server(session, make_payload())
-        await services.create_server(session, make_payload(slug="casa-de-ana", bind_port=7273))
-
-        # first quedó activo; lo apagamos y apagamos el otro para liberar 7272,
-        # luego otro lo ocupa.
         await services.deactivate_server(session, first)
-        second = await services.resolve_by_slug(session, "casa-de-ana")
-        await services.deactivate_server(session, second)
+        await services.create_server(session, make_payload(slug="casa-de-ana"))
 
-        # Ahora alguien más toma 7272.
-        await services.create_server(session, make_payload(slug="casa-de-pedro", bind_port=7272))
+        await services.activate_server(session, first)
 
-        with pytest.raises(ConflictError) as exc:
-            await services.activate_server(session, first)
-        assert exc.value.code == "port_taken"
+        assert first.status is ServerStatus.ACTIVE
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -384,9 +374,9 @@ class TestReads:
         assert exc.value.code == "server_not_found_by_slug"
 
     async def test_list_returns_newest_first(self, session: AsyncSession) -> None:
-        await services.create_server(session, make_payload(slug="uno", bind_port=7272))
-        await services.create_server(session, make_payload(slug="dos", bind_port=7273))
-        await services.create_server(session, make_payload(slug="tres", bind_port=7274))
+        await services.create_server(session, make_payload(slug="uno"))
+        await services.create_server(session, make_payload(slug="dos"))
+        await services.create_server(session, make_payload(slug="tres"))
 
         servers, total = await services.list_servers(session, limit=10, offset=0)
 
@@ -395,9 +385,7 @@ class TestReads:
 
     async def test_list_paginates(self, session: AsyncSession) -> None:
         for i in range(5):
-            await services.create_server(
-                session, make_payload(slug=f"servidor-{i}", bind_port=7300 + i)
-            )
+            await services.create_server(session, make_payload(slug=f"servidor-{i}"))
 
         page, total = await services.list_servers(session, limit=2, offset=0)
         assert total == 5
@@ -425,13 +413,12 @@ class TestUpdate:
         assert updated.max_members == 10
         assert updated.slug == "casa-de-luis"  # no se toca
 
-    async def test_cannot_move_to_a_taken_port(self, session: AsyncSession) -> None:
-        first = await services.create_server(session, make_payload())
-        await services.create_server(session, make_payload(slug="otro", bind_port=7273))
+    async def test_update_limits(self, session: AsyncSession) -> None:
+        server = await services.create_server(session, make_payload())
 
-        with pytest.raises(ConflictError) as exc:
-            await services.update_server(session, first, ServerUpdate(bind_port=7273))
-        assert exc.value.code == "port_taken"
+        updated = await services.update_server(session, server, ServerUpdate(max_members=5))
+
+        assert updated.max_members == 5
 
 
 class TestDelete:
@@ -466,7 +453,7 @@ class TestDelete:
         await session.flush()
 
         # Se puede volver a usar el mismo identificador después de eliminar.
-        recreated = await services.create_server(session, make_payload(bind_port=7272))
+        recreated = await services.create_server(session, make_payload())
         assert recreated.slug == "casa-de-luis"
 
 
@@ -504,7 +491,6 @@ class TestModels:
             id=new_id(),
             name="Prueba",
             slug="prueba",
-            bind_port=9999,
             channels=[Channel(id=new_id(), name="general", is_default=True)],
         )
         session.add(server)
