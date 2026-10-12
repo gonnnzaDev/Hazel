@@ -18,6 +18,9 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 
 Environment = Literal["local", "test", "prod"]
 
+# Direcciones comodín: el proceso escucha en todas las interfaces.
+WILDCARD_HOSTS = frozenset({"0.0.0.0", "::", "[::]"})  # noqa: S104
+
 # Las listas llegan desde el entorno como CSV (`a,b,c`). `NoDecode` le dice a
 # pydantic-settings que no intente interpretarlas como JSON, para que el
 # validador de abajo haga el split.
@@ -79,6 +82,15 @@ class Settings(BaseSettings):
     def sync_database_url(self) -> str:
         """URL síncrona, necesaria para las migraciones de Alembic."""
         return self.database_url.replace("+asyncpg", "")
+
+    @property
+    def bind_host_is_wildcard(self) -> bool:
+        """Si el proceso escucha en todas las interfaces.
+
+        Un nodo autohospedado casi siempre quiere esto: si escucha solo en
+        `127.0.0.1`, nadie fuera de la máquina puede entrar.
+        """
+        return self.host.strip() in WILDCARD_HOSTS
 
     @computed_field  # type: ignore[prop-decorator]
     @property

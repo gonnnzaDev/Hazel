@@ -17,6 +17,7 @@ from dataclasses import dataclass
 from fastapi import APIRouter
 
 from apps.common.api.router import router as common_router
+from apps.node.api.router import router as node_router
 from apps.servers.api.router import router as servers_router
 
 
@@ -34,6 +35,7 @@ class AppConfig:
 # este orden, así que las apps base van primero.
 INSTALLED_APPS: tuple[AppConfig, ...] = (
     AppConfig(name="common", router=common_router),
+    AppConfig(name="node", router=node_router, prefix="/node", tags=("nodo",)),
     AppConfig(name="servers", router=servers_router, prefix="/servers", tags=("servidores",)),
 )
 
