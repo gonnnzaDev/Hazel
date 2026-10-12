@@ -1,166 +1,145 @@
-<div align="center">
-
 # Recop
 
-**Tu chat. Tu máquina. Tu puerto.**
+**Chat autoservido. Tu servidor, tu máquina, tu puerto.**
 
-[Qué es](#qué-es) · [Instalación](#instalación) · [Uso](#uso) · [Desarrollo](#desarrollo)
+Recop es un backend de chat tipo Discord con una diferencia clave: **no hay una plataforma
+central que hostee nada por vos**. Cada persona despliega su propio *servidor* en su propia PC,
+se abre un puerto en su máquina, sus amigos se conectan a `host:puerto`, y cuando el dueño
+decide cerrar el servidor, el puerto se cierra. Sin un corte global, sin dependencia de un
+proveedor central.
 
-</div>
-
----
-
-## Qué es
-
-Recop es un chat tipo Discord con una diferencia: **nadie te lo hospeda**.
-
-Levantás el servidor en tu propia PC, se abre un puerto en tu máquina, le
-pasás `ip:puerto` a tus amigos, y chatean. Cuando dejás de querer el servidor, lo
-apagás y el puerto se cierra.
-
-**No hay cuentas.** Entrás con un nombre y listo. El mismo nombre puede existir en
-dos servidores y son dos personas distintas.
-
-No hay empresa en el medio. Si se cae el servicio, es porque se apagó tu
-computadora.
+> **Estado:** en construcción. Backend únicamente. Sin UI todavía.
 
 ---
 
-## Instalación
+## Cómo se usa (visión de producto)
 
-### Docker
+1. Descargás/instalás el **nodo Recop** en tu PC.
+2. Levantás tu servidor local → se abre un puerto (ej. `192.168.1.50:7272`).
+3. Compartís `host:puerto` con quien quieras.
+4. Cada persona entra con un **nickname**. No hay cuentas globales, no hay emails, no hay registro.
+5. Cuando dejás de querer el servidor, lo apagás → el puerto se cierra y el servidor queda
+   **inactivo**, conservando toda su información.
 
-La forma más segura de que todos tengan exactamente lo mismo:
-
-```bash
-git clone https://github.com/gonnnzaDev/recop
-cd recop
-cp .env.example .env
-docker compose up
-```
-
-### A mano
-
-Necesitás Python 3.13+, PostgreSQL y Kafka:
-
-```bash
-uv sync                      # instala las dependencias
-cp .env.example .env
-docker compose up -d         # solo PostgreSQL + Kafka
-uv run alembic upgrade head
-uv run python -m core
-```
-
-> **Próximamente:** un script único que instale todo solo y funcione en Linux,
-> macOS, Windows y Android (Termux). Hoy todavía hay que hacer los pasos a mano.
+La identidad de una persona **existe únicamente dentro de un servidor**. El mismo nickname puede
+existir en dos servidores distintos y son dos personas diferentes. Esto es intencional.
 
 ---
 
-## Uso
+## Propuesta de valor
 
-```bash
-make up        # levanta PostgreSQL y Kafka
-make api       # arranca el nodo
-```
-
-Después, en otra terminal:
-
-```bash
-# Desplegar un servidor
-curl -X POST localhost:7272/api/v1/servers \
-  -H 'Content-Type: application/json' \
-  -d '{"name":"Casa de Luis","slug":"casa-de-luis",
-       "owner_nickname":"luis","bind_port":7272}'
-```
-
-Te devuelve un `id` y el puerto queda abierto.
-
-```bash
-# Ver la dirección para compartir
-curl localhost:7272/api/v1/servers/{id}/address
-
-# Ver los servidores
-curl localhost:7272/api/v1/servers
-
-# Apagar (conserva todos los datos)
-curl -X POST localhost:7272/api/v1/servers/{id}/deactivate
-
-# Volver a encender
-curl -X POST localhost:7272/api/v1/servers/{id}/activate
-```
-
-### Los cuatro estados
-
-| Estado | Puerto | Datos |
+| | Plataforma central (Discord, Slack) | Recop |
 |---|---|---|
-| Activo | Abierto | Intactos |
-| Inactivo (apagado a propósito) | Cerrado | Intactos |
-| Inactivo (el proceso se cayó) | Cerrado | Intactos |
-| Eliminado | Cerrado | Borrados |
-
-**Apagar nunca borra nada.** Si tu proceso se muere, al reiniciar el nodo todos
-tus servidores aparecen apagados, con todo adentro. Los prendés otra vez y
-siguen ahí.
+| Quién hospeda | El proveedor | **Vos** |
+| Coste de infraestructura | Escala con el uso | Escala con tu hardware |
+| Si el proveedor cae | No entrás a ningún lado | **No aplica: no hay proveedor** |
+| Tus datos | En sus servidores | **En tu máquina** |
+| Silencio/ausencia | Sin impacto | Solo afecta a tu servidor |
+| Puerto exposure | No lo controlás | **Lo controlás vos** |
 
 ---
 
-## Desarrollo
+## Arquitectura
 
-```bash
-make check      # lint + formato + tipos + tests
-make test       # solo tests
-make test-integration RECOP_TEST_DATABASE_URL=postgresql+asyncpg://recop:recop@localhost:5432/recop_test
+Backend en **Python 3.13 + FastAPI**, organizado como una colección de *apps* al estilo Django
+(cada app encapsula su propio modelo, esquema, servicio y API).
+
+```
+┌──────────────┐   ┌──────────────┐   ┌──────────────┐
+│  Servidor A  │   │  Servidor B  │   │  Servidor C  │
+│  (tu PC)     │   │  (tu PC)     │   │  (tu PC)     │
+│  :7272       │   │  :8080       │   │  :9000       │
+└──────┬───────┘   └──────┬───────┘   └──────┬───────┘
+       │                  │                  │
+       │            Kafka (bus de chat)      │
+       └──────────────────┼──────────────────┘
+                          │
+                  ┌───────┴────────┐
+                  │  PostgreSQL    │
+                  │  (por nodo)    │
+                  └────────────────┘
 ```
 
-### Estructura
+- **Autohospedaje real**: cada instancia corre en la máquina del dueño.
+- **Kafka** como bus de eventos para el chat.
+- **PostgreSQL** como store durable. Si el proceso muere, el servidor queda *inactivo* —
+  nunca se pierden datos.
+
+### Estructura del proyecto
 
 ```
 recop/
-├── apps/            # cada módulo es autocontenido
-│   ├── common/      #   tipos, errores, reglas de nickname
-│   ├── servers/     #   ciclo de vida del servidor
-│   ├── identity/    #   nicknames y tokens      ← pendiente
-│   ├── channels/    #   salas de chat           ← pendiente
-│   └── chat/        #   Kafka + WebSocket       ← pendiente
-├── core/            # configuración, base de datos, app factory
-├── migrations/      # Alembic
+├── apps/                  # "apps" al estilo Django: cada módulo es autocontenido
+│   ├── common/            #  base de datos, errores, mixins, utilidades
+│   ├── servers/           #  ciclo de vida del servidor (el core del producto)
+│   ├── identity/          #  nicknames e identidad *dentro* de un servidor
+│   ├── channels/          #  canales / salas de chat
+│   └── chat/              #  Kafka + WebSocket
+├── core/                  #  configuración, sesión de DB, app factory
+├── migrations/            #  Alembic
 └── tests/
 ```
 
-Dentro de cada app, siempre las mismas cuatro capas:
+Dentro de cada app, el patrón es siempre el mismo (separación de responsabilidades estilo MVC):
 
-| Archivo | Qué hace |
-|---|---|
-| `models.py` | Los datos y cómo se guardan |
-| `schemas.py` | Qué entra y qué sale |
-| `services.py` | Las reglas del negocio |
-| `api/` | Conectar HTTP con el service |
-
-`services.py` nunca importa FastAPI. Eso permite testearlo sin levantar nada, y
-va a servir igual para el futuro cliente mobile.
+| Capa | Archivo | Responsabilidad |
+|---|---|---|
+| **Model** | `models.py` | Entidades y persistencia (SQLAlchemy async) |
+| **Schema** | `schemas.py` | Contratos de entrada/salida (Pydantic) |
+| **Service** | `services.py` | Lógica de negocio. Sin conocimiento de HTTP |
+| **API / View** | `api/` | Bindings HTTP. Solo traduce request → service → response |
 
 ---
 
-## Documentación
+## Desarrollo local
 
-| Documento | Para qué |
-|---|---|
-| [`docs/api.md`](docs/api.md) | Los 57 endpoints y qué hace cada uno |
-| [`docs/architecture.md`](docs/architecture.md) | Por qué se decidió cada cosa |
-| [`CONTRIBUTING.md`](CONTRIBUTING.md) | Cómo contribuir y cómo está armado el código |
+### Requisitos
+
+- Python `>=3.13`
+- [uv](https://docs.astral.sh/uv/)
+- PostgreSQL
+- Kafka
+
+### Puesta en marcha
+
+```bash
+uv sync                        # instala dependencias y crea el venv
+cp .env.example .env           # ajustá la configuración
+docker compose up -d           # levanta postgres + kafka
+uv run alembic upgrade head    # aplica migraciones
+uv run python -m core          # levanta la API
+```
+
+> Para arrancar el nodo se usa `uv run python -m core`. El console script
+> `recop-api` también existe y funciona en instalaciones reales del paquete,
+> pero algunas versiones de `uv` fallan al lanzarlo en modo `uv run`.
+
+### Calidad
+
+```bash
+uv run ruff check .            # lint
+uv run ruff format .           # formato
+uv run mypy .                  # tipos
+uv run pytest                  # tests
+```
+
+Los tests de integración necesitan PostgreSQL. Si no definís
+`RECOP_TEST_DATABASE_URL` se omiten solos, así que `pytest` funciona igual en un
+entorno sin infraestructura:
+
+```bash
+createdb recap_test
+make test-integration RECOP_TEST_DATABASE_URL=postgresql+asyncpg://recop:recop@localhost:5432/recop_test
+```
 
 ---
 
-## Estado
+## Estado del desarrollo
 
-Es una beta temprana. El backend de los servidores ya anda; el chat todavía no.
+Cada funcionalidad se desarrolla en su propia rama y se sube como **Pull Request** para revisión
+manual. Nada se mergea automáticamente.
 
-Lo que falta:
-
-- [ ] Nicknames y entrada a un servidor
-- [ ] Canales
-- [ ] Chat con Kafka y WebSocket
-- [ ] Instaladores para Windows, macOS, Linux y Android
+Ver `docs/architecture.md` para las decisiones de diseño y el razonamiento detrás de cada una.
 
 ---
 
