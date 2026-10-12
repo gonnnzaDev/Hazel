@@ -161,17 +161,17 @@ registro.
 
 | Método | Ruta | Qué hace |
 |---|---|---|
-| `[ ]` | `POST /api/v1/servers/{server_id}/join` | Entrar con un nickname. Devuelve token. |
-| `[ ]` | `POST /api/v1/servers/{server_id}/leave` | Salir del servidor. |
-| `[ ]` | `POST /api/v1/auth/refresh` | Renovar el token. |
-| `[ ]` | `POST /api/v1/auth/logout` | Revocar el token. |
-| `[ ]` | `GET /api/v1/me` | Quién soy, en qué servidores estoy. |
-| `[ ]` | `PATCH /api/v1/me` | Cambiar mi nombre visible. |
-| `[ ]` | `GET /api/v1/servers/{server_id}/members` | Listar miembros. |
-| `[ ]` | `GET /api/v1/servers/{server_id}/members/{nickname}` | Ver un miembro. |
-| `[ ]` | `DELETE /api/v1/servers/{server_id}/members/{nickname}` | Expulsar. |
-| `[ ]` | `PUT /api/v1/servers/{server_id}/members/{nickname}/roles/{role_id}` | Asignar rol. |
-| `[ ]` | `DELETE /api/v1/servers/{server_id}/members/{nickname}/roles/{role_id}` | Quitar rol. |
+| `[x]` | `POST /api/v1/servers/{server_id}/join` | Entrar con un nickname. Devuelve token. |
+| `[x]` | `POST /api/v1/servers/{server_id}/leave` | Salir del servidor. |
+| `[x]` | `POST /api/v1/auth/refresh` | Renovar el token (rota el viejo). |
+| `[x]` | `POST /api/v1/auth/logout` | Revocar el token de este dispositivo. |
+| `[x]` | `POST /api/v1/auth/logout-all` | Revocar todos los tokens de este servidor. |
+| `[x]` | `GET /api/v1/me` | Quién soy en el servidor de este token. |
+| `[x]` | `PATCH /api/v1/me` | Cambiar mi nombre visible. |
+| `[x]` | `GET /api/v1/servers/{server_id}/members` | Listar miembros. |
+| `[x]` | `GET /api/v1/servers/{server_id}/members/{nickname}` | Ver un miembro. |
+| `[x]` | `DELETE /api/v1/servers/{server_id}/members/{nickname}` | Expulsar. |
+| `[x]` | `PUT /api/v1/servers/{server_id}/members/{nickname}/role` | Cambiar el rol (`?role=admin`). |
 
 ### `POST /api/v1/servers/{server_id}/join`
 
@@ -182,17 +182,25 @@ POST /api/v1/servers/01a1.../join
 
 ```json
 {
-  "token": "eyJhbGciOi...",
-  "expires_at": "2026-10-12T03:14:00Z",
+  "token": "kJ8xQm2nVr7pL4sT...",
+  "expires_at": "2026-11-10T03:14:00Z",
   "member": {
+    "id": "01a1...",
     "nickname": "ana",
     "display_name": "Ana",
-    "roles": ["owner"],
+    "role": "owner",
+    "is_online": false,
+    "last_seen_at": null,
     "joined_at": "2026-10-11T23:50:17Z"
   },
-  "server": { "slug": "casa-de-luis", "name": "Casa de Luis" }
+  "server": { "id": "01a1...", "slug": "casa-de-luis", "name": "Casa de Luis" }
 }
 ```
+
+El rol sale como **texto** (`"owner"`), no como el número que se guarda en la
+base. La base ordena por número porque comparar roles es comparar enteros; la
+API habla con palabras porque un cliente no debería tener que saber que admin
+es 50.
 
 **El token está scopeado al servidor.** El mismo token no sirve en otro servidor.
 Si Ana está en `casa-de-luis` y en `gym-de-martes`, tiene **dos tokens
@@ -210,6 +218,24 @@ Centralizadas en `apps/common/nickname.py`:
 Un nickname puede ser válido en un servidor y estar tomado en otro. Eso no es un
 conflicto: es el punto.
 
+### Volver a entrar
+
+Si el nickname ya existe en ese servidor, **entrar de nuevo con el mismo nombre
+funciona**: recuperás el acceso y recibís un token nuevo. Así se resuelve "perdí
+la contraseña" en un producto sin cuentas: entrás otra vez con el mismo nombre.
+
+El trade-off es explícito: alguien que adivine tu nickname entra como vos. En
+una red local con amigos es aceptable; en un servidor abierto no lo sería, y
+por eso el rate limit y el límite de miembros existen.
+
+### El dueño
+
+- El **primer miembro** de un servidor es su dueño.
+- Si el dueño se va, el rol pasa al miembro **más antiguo** que quede. Un
+  servidor sin dueño no se podría administrar ni borrar.
+- Ni un admin puede expulsar al dueño. El dueño se va si quiere.
+- El rol de dueño no se asigna ni se quita por API.
+
 ---
 
 ## 4. Roles y permisos
@@ -217,9 +243,10 @@ conflicto: es el punto.
 | Método | Ruta | Qué hace |
 |---|---|---|
 | `[ ]` | `GET /api/v1/servers/{server_id}/roles` | Listar roles. |
-| `[ ]` | `POST /api/v1/servers/{server_id}/roles` | Crear rol. |
-| `[ ]` | `PATCH /api/v1/servers/{server_id}/roles/{role_id}` | Editar rol. |
-| `[ ]` | `DELETE /api/v1/servers/{server_id}/roles/{role_id}` | Eliminar rol. |
+| `[ ]` | `POST /api/v1/servers/{server_id}/roles` | Crear rol personalizado. |
+
+Los tres roles base ya se aplican: un miembro deja de tener `member` o `member` y
+pasa a `admin` con `PUT .../role?role=admin`.
 
 ### Roles base
 
