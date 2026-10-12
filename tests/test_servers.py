@@ -84,12 +84,25 @@ def make_payload(**overrides: object) -> ServerCreate:
 
 
 class TestCreateServer:
-    async def test_create_leaves_the_server_running(self, session: AsyncSession) -> None:
-        """Desplegar un servidor implica que quede escuchando.
+    async def test_create_registers_the_group_in_creating(self, session: AsyncSession) -> None:
+        """Crear deja el grupo en `CREATING`, no `ACTIVE`.
 
-        Es la promesa del producto: si el dueño despliega, el puerto se abre.
+        El service solo registra la fila. Activarlo es trabajo del proceso del
+        nodo, y lo hace recién cuando el proceso del grupo responde: marcarlo
+        activo antes sería afirmar que hay un puerto escuchando cuando todavía
+        no lo hay.
         """
-        server = await services.create_server(session, make_payload())
+        server = await services.create_server(session, make_payload(), port=7272)
+
+        assert server.status is ServerStatus.CREATING
+        assert not server.status.accepts_traffic
+        assert server.last_heartbeat_at is None
+
+    async def test_activating_makes_it_serve_traffic(self, session: AsyncSession) -> None:
+        """Encender es lo que abre el puerto."""
+        server = await services.create_server(session, make_payload(), port=7272)
+
+        await services.activate_server(session, server)
 
         assert server.status is ServerStatus.ACTIVE
         assert server.status.accepts_traffic
@@ -97,13 +110,13 @@ class TestCreateServer:
 
     async def test_create_normalizes_the_slug(self, session: AsyncSession) -> None:
         server = await services.create_server(
-            session, make_payload(name="Vereda Grande", slug="Vereda Grande")
+            session, make_payload(name="Vereda Grande", slug="Vereda Grande"), port=7272
         )
         assert server.slug == "vereda-grande"
 
     async def test_create_adds_a_default_channel(self, session: AsyncSession) -> None:
         """Un servidor sin canales igual tiene dónde caer la gente."""
-        server = await services.create_server(session, make_payload())
+        server = await services.create_server(session, make_payload(), port=7272)
 
         assert len(server.channels) == 1
         assert server.channels[0].name == "general"
@@ -118,6 +131,7 @@ class TestCreateServer:
                     ChannelCreate(name="games", position=1),
                 ]
             ),
+            port=7272,
         )
 
         names = {c.name for c in server.channels}
@@ -128,6 +142,7 @@ class TestCreateServer:
         server = await services.create_server(
             session,
             make_payload(channels=[ChannelCreate(name="lobby"), ChannelCreate(name="sala")]),
+            port=7272,
         )
 
         assert sum(c.is_default for c in server.channels) == 1
@@ -143,49 +158,53 @@ class TestCreateServer:
                         ChannelCreate(name="b", is_default=True),
                     ]
                 ),
+                port=7272,
             )
         assert exc.value.code == "multiple_default_channels"
 
     async def test_rejects_invalid_channel_kind(self, session: AsyncSession) -> None:
         with pytest.raises(ValidationDomainError) as exc:
             await services.create_server(
-                session, make_payload(channels=[ChannelCreate(name="x", kind="hologram")])
+                session,
+                make_payload(channels=[ChannelCreate(name="x", kind="hologram")]),
+                port=7272,
             )
         assert exc.value.code == "invalid_channel_kind"
 
     async def test_rejects_duplicate_slug(self, session: AsyncSession) -> None:
-        await services.create_server(session, make_payload())
+        await services.create_server(session, make_payload(), port=7272)
 
         with pytest.raises(ConflictError) as exc:
-            await services.create_server(session, make_payload())
+            await services.create_server(session, make_payload(), port=7272)
         assert exc.value.code == "slug_taken"
 
-    async def test_many_servers_share_the_node_port(self, session: AsyncSession) -> None:
-        """El puerto es del nodo, no del servidor.
+    async def test_each_server_keeps_its_own_port(self, session: AsyncSession) -> None:
+        """Cada grupo tiene su puerto: es lo que comparte el dueño.
 
-        Por eso se pueden crear varios servidores sin que uno le robe el puerto
-        al otro: comparten el listener del proceso.
+        Dos grupos con el mismo puerto no podrían levantarse los dos a la vez,
+        que es justo lo que evita que un grupo ocupe el puerto de otro.
         """
         for i in range(3):
-            created = await services.create_server(session, make_payload(slug=f"servidor-{i}"))
-            assert created.status is ServerStatus.ACTIVE
+            await services.create_server(session, make_payload(slug=f"servidor-{i}"), port=7273 + i)
 
-        _found, total = await services.list_servers(session, limit=10, offset=0)
+        found, total = await services.list_servers(session, limit=10, offset=0)
         assert total == 3
+        assert sorted(s.bind_port for s in found) == [7273, 7274, 7275]
 
     async def test_persists_to_the_database(self, session: AsyncSession) -> None:
         """No alcanza con el objeto en memoria: tiene que estar en la tabla."""
-        created = await services.create_server(session, make_payload())
+        created = await services.create_server(session, make_payload(), port=7272)
 
         found = await session.execute(
-            text("SELECT name, slug, status FROM servers WHERE id = :id"),
+            text("SELECT name, slug, status, bind_port FROM servers WHERE id = :id"),
             {"id": str(created.id)},
         )
         row = found.one()
         assert row.name == "Casa de Luis"
         assert row.slug == "casa-de-luis"
+        assert row.bind_port == 7272
         # El enum guarda el VALOR en minúscula, no el nombre del miembro.
-        assert row.status == "active"
+        assert row.status == "creating"
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -195,7 +214,7 @@ class TestCreateServer:
 
 class TestDeactivate:
     async def test_deactivate_closes_the_port(self, session: AsyncSession) -> None:
-        server = await services.create_server(session, make_payload())
+        server = await services.create_server(session, make_payload(), port=7272)
 
         await services.deactivate_server(session, server)
 
@@ -217,6 +236,7 @@ class TestDeactivate:
                     ChannelCreate(name="games", position=1),
                 ]
             ),
+            port=7272,
         )
         server_id = server.id
         channel_names_before = sorted(c.name for c in server.channels)
@@ -232,7 +252,7 @@ class TestDeactivate:
         assert reloaded.slug == "casa-de-luis"
 
     async def test_deactivate_is_idempotent(self, session: AsyncSession) -> None:
-        server = await services.create_server(session, make_payload())
+        server = await services.create_server(session, make_payload(), port=7272)
 
         await services.deactivate_server(session, server)
         await services.deactivate_server(session, server)  # no explota
@@ -249,7 +269,9 @@ class TestActivate:
     async def test_reactivate_reopens_the_same_server(self, session: AsyncSession) -> None:
         """Apagar y encender devuelve el mismo servidor con todo dentro."""
         server = await services.create_server(
-            session, make_payload(channels=[ChannelCreate(name="general", is_default=True)])
+            session,
+            make_payload(channels=[ChannelCreate(name="general", is_default=True)]),
+            port=7272,
         )
         server_id = server.id
 
@@ -267,7 +289,7 @@ class TestActivate:
         Permite que el dueño ponga 'encender mi servidor' en su flujo sin
         consultar el estado previo.
         """
-        server = await services.create_server(session, make_payload())
+        server = await services.create_server(session, make_payload(), port=7272)
 
         result = await services.activate_server(session, server)
 
@@ -279,9 +301,9 @@ class TestActivate:
         Es el caso directo de que el puerto es compartido: no hay conflicto de
         puertos que pueda bloquear la reactivación.
         """
-        first = await services.create_server(session, make_payload())
+        first = await services.create_server(session, make_payload(), port=7272)
         await services.deactivate_server(session, first)
-        await services.create_server(session, make_payload(slug="casa-de-ana"))
+        await services.create_server(session, make_payload(slug="casa-de-ana"), port=7272)
 
         await services.activate_server(session, first)
 
@@ -300,7 +322,7 @@ class TestMarkAllInactive:
         Es exactamente el requisito: si el proceso se cae, el servidor queda
         inactivo, no muerto.
         """
-        running = await services.create_server(session, make_payload())
+        running = await services.create_server(session, make_payload(), port=7272)
 
         count = await services.mark_all_inactive(session)
         await session.flush()
@@ -310,7 +332,7 @@ class TestMarkAllInactive:
         assert running.status is ServerStatus.INACTIVE
 
     async def test_leaves_inactive_servers_untouched(self, session: AsyncSession) -> None:
-        server = await services.create_server(session, make_payload())
+        server = await services.create_server(session, make_payload(), port=7272)
         await services.deactivate_server(session, server)
 
         count = await services.mark_all_inactive(session)
@@ -320,7 +342,9 @@ class TestMarkAllInactive:
     async def test_servers_can_be_reactivated_after_restart(self, session: AsyncSession) -> None:
         """El ciclo crash → restart → reactivate tiene que cerrar."""
         server = await services.create_server(
-            session, make_payload(channels=[ChannelCreate(name="general", is_default=True)])
+            session,
+            make_payload(channels=[ChannelCreate(name="general", is_default=True)]),
+            port=7272,
         )
         server_id = server.id
 
@@ -343,7 +367,8 @@ class TestMarkAllInactive:
 
 class TestHeartbeat:
     async def test_heartbeat_updates_the_timestamp(self, session: AsyncSession) -> None:
-        server = await services.create_server(session, make_payload())
+        server = await services.create_server(session, make_payload(), port=7272)
+        await services.activate_server(session, server)
         before = server.last_heartbeat_at
 
         await services.heartbeat(session, server)
@@ -363,7 +388,7 @@ class TestReads:
             await services.get_server(session, new_id())
 
     async def test_resolve_by_slug(self, session: AsyncSession) -> None:
-        await services.create_server(session, make_payload())
+        await services.create_server(session, make_payload(), port=7272)
 
         found = await services.resolve_by_slug(session, "casa-de-luis")
         assert found.name == "Casa de Luis"
@@ -374,9 +399,9 @@ class TestReads:
         assert exc.value.code == "server_not_found_by_slug"
 
     async def test_list_returns_newest_first(self, session: AsyncSession) -> None:
-        await services.create_server(session, make_payload(slug="uno"))
-        await services.create_server(session, make_payload(slug="dos"))
-        await services.create_server(session, make_payload(slug="tres"))
+        await services.create_server(session, make_payload(slug="uno"), port=7272)
+        await services.create_server(session, make_payload(slug="dos"), port=7272)
+        await services.create_server(session, make_payload(slug="tres"), port=7272)
 
         servers, total = await services.list_servers(session, limit=10, offset=0)
 
@@ -385,7 +410,7 @@ class TestReads:
 
     async def test_list_paginates(self, session: AsyncSession) -> None:
         for i in range(5):
-            await services.create_server(session, make_payload(slug=f"servidor-{i}"))
+            await services.create_server(session, make_payload(slug=f"servidor-{i}"), port=7272)
 
         page, total = await services.list_servers(session, limit=2, offset=0)
         assert total == 5
@@ -403,7 +428,7 @@ class TestReads:
 
 class TestUpdate:
     async def test_update_partial_fields(self, session: AsyncSession) -> None:
-        server = await services.create_server(session, make_payload())
+        server = await services.create_server(session, make_payload(), port=7272)
 
         updated = await services.update_server(
             session, server, ServerUpdate(name="Casa de Luis II", max_members=10)
@@ -414,7 +439,7 @@ class TestUpdate:
         assert updated.slug == "casa-de-luis"  # no se toca
 
     async def test_update_limits(self, session: AsyncSession) -> None:
-        server = await services.create_server(session, make_payload())
+        server = await services.create_server(session, make_payload(), port=7272)
 
         updated = await services.update_server(session, server, ServerUpdate(max_members=5))
 
@@ -431,6 +456,7 @@ class TestDelete:
                     ChannelCreate(name="games", position=1),
                 ]
             ),
+            port=7272,
         )
         server_id: RecordId = server.id
         await session.flush()
@@ -448,12 +474,12 @@ class TestDelete:
         assert remaining.scalar_one() == 0
 
     async def test_delete_frees_the_slug(self, session: AsyncSession) -> None:
-        server = await services.create_server(session, make_payload())
+        server = await services.create_server(session, make_payload(), port=7272)
         await services.delete_server(session, server)
         await session.flush()
 
         # Se puede volver a usar el mismo identificador después de eliminar.
-        recreated = await services.create_server(session, make_payload())
+        recreated = await services.create_server(session, make_payload(), port=7272)
         assert recreated.slug == "casa-de-luis"
 
 
@@ -464,12 +490,13 @@ class TestDelete:
 
 class TestEnsureActive:
     async def test_passes_for_active_server(self, session: AsyncSession) -> None:
-        server = await services.create_server(session, make_payload())
+        server = await services.create_server(session, make_payload(), port=7272)
+        await services.activate_server(session, server)
         services.ensure_active(server)  # no lanza
 
     async def test_fails_for_inactive_server(self, session: AsyncSession) -> None:
         """Escribir en un servidor apagado tiene que dar un error claro."""
-        server = await services.create_server(session, make_payload())
+        server = await services.create_server(session, make_payload(), port=7272)
         await services.deactivate_server(session, server)
 
         with pytest.raises(ServerInactiveError) as exc:
@@ -491,6 +518,7 @@ class TestModels:
             id=new_id(),
             name="Prueba",
             slug="prueba",
+            bind_port=7299,
             channels=[Channel(id=new_id(), name="general", is_default=True)],
         )
         session.add(server)

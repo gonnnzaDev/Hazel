@@ -16,7 +16,7 @@ async def node_info() -> NodeInfo:
 
     Es lo primero que consulta un cliente para saber a qué se conectó.
     """
-    return NodeInfo.model_validate(services.get_node_info())
+    return NodeInfo.model_validate(services.node_info())
 
 
 @router.get("/address", response_model=NodeAddress, summary="Dirección para compartir")
@@ -27,4 +27,4 @@ async def node_address() -> NodeAddress:
     cuáles de las interfaces de la máquina sí sirven, ordenadas por probabilidad,
     para que el dueño comparta una que funcione.
     """
-    return NodeAddress.model_validate(services.get_node_address())
+    return NodeAddress.model_validate(services.node_address())
