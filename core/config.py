@@ -45,6 +45,16 @@ class Settings(BaseSettings):
     # ─── Servidor HTTP ─────────────────────────────────────────────────────────
     host: str = "0.0.0.0"  # noqa: S104 — por defecto debe escuchar en todas las interfaces
     port: int = Field(default=7272, ge=1, le=65535)
+    group_port_end: int = Field(
+        default=7400,
+        ge=1024,
+        le=65535,
+        description=(
+            "Último puerto que el nodo puede repartir entre grupos. Cada grupo "
+            "corre en su propio proceso con su propio puerto, así que el nodo "
+            "necesita un rango."
+        ),
+    )
     root_path: str = ""
     cors_origins: CsvList = Field(default_factory=lambda: ["*"])
 
@@ -64,9 +74,30 @@ class Settings(BaseSettings):
     rate_limit_messages_per_minute: int = Field(default=20, ge=1)
     max_message_bytes: int = Field(default=4000, ge=1)
 
+    # ─── Llamadas (señalización WebRTC) ────────────────────────────────────────
+    call_max_participants: int = Field(
+        default=16,
+        ge=2,
+        le=200,
+        description=(
+            "Máximo de participantes por llamada. En full-mesh cada uno conecta "
+            "con todos, así que el ancho de subida crece con el cuadrado del "
+            "número de gente: este tope protege la PC del dueño."
+        ),
+    )
+    call_ice_servers: CsvList = Field(
+        default_factory=list,
+        description=(
+            "Servidores ICE (STUN/TURN) para WebRTC, separados por coma. "
+            "Vacío por defecto: en la misma red o con IP directa no hace falta. "
+            "Para atravesar NAT se configura un STUN/TURN propio. Recop no "
+            "depende de ninguno externo para funcionar."
+        ),
+    )
+
     # ─── Derivados ─────────────────────────────────────────────────────────────
 
-    @field_validator("cors_origins", "kafka_bootstrap_servers", mode="before")
+    @field_validator("cors_origins", "kafka_bootstrap_servers", "call_ice_servers", mode="before")
     @classmethod
     def _split_csv(cls, value: object) -> object:
         """Acepta `a,b,c` desde el entorno y lo convierte a lista."""

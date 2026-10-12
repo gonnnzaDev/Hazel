@@ -17,7 +17,9 @@ from dataclasses import dataclass
 from fastapi import APIRouter
 
 from apps.common.api.router import router as common_router
+from apps.identity.api.router import router as identity_router
 from apps.node.api.router import router as node_router
+from apps.servers.api.calls import router as calls_router
 from apps.servers.api.router import router as servers_router
 
 
@@ -36,7 +38,9 @@ class AppConfig:
 INSTALLED_APPS: tuple[AppConfig, ...] = (
     AppConfig(name="common", router=common_router),
     AppConfig(name="node", router=node_router, prefix="/node", tags=("nodo",)),
+    AppConfig(name="identity", router=identity_router, tags=("identidad",)),
     AppConfig(name="servers", router=servers_router, prefix="/servers", tags=("servidores",)),
+    AppConfig(name="calls", router=calls_router, prefix="/servers", tags=("llamadas",)),
 )
 
 
