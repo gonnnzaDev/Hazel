@@ -1,6 +1,6 @@
 # Recop — atajos de desarrollo
 .DEFAULT_GOAL := help
-.PHONY: help install up down logs stack-up stack-down stack-logs api migrate revision test test-integration lint format typecheck check clean
+.PHONY: help install setup up down logs stack-up stack-down stack-logs api migrate revision test test-integration lint format typecheck check clean
 
 help: ## Mostrar esta ayuda
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
@@ -9,6 +9,9 @@ help: ## Mostrar esta ayuda
 install: ## Instalar dependencias y crear el .venv
 	uv sync
 	@cp -n .env.example .env 2>/dev/null || true
+
+setup: ## Instalación completa (delega a ./scripts/setup.sh)
+	./scripts/setup.sh
 
 up: ## Levantar PostgreSQL y Kafka (compose de desarrollo)
 	docker compose -f docker-compose.dev.yml up -d
