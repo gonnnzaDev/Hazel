@@ -11,6 +11,8 @@ from typing import Annotated
 from fastapi import APIRouter, Path, Query, status
 
 from apps.common.types import RecordId
+from apps.node import services as node_services
+from apps.node.schemas import NodeAddress
 from apps.servers import services
 from apps.servers.schemas import (
     ServerAddress,
@@ -152,13 +154,16 @@ async def delete_server(server_id: ServerId, session: SessionDep) -> None:
     summary="Dirección para compartir",
 )
 async def get_address(server_id: ServerId, session: SessionDep) -> ServerAddress:
-    """Devuelve el `host:puerto` que el dueño comparte con sus invitados."""
+    """Dirección por la que entrar a este servidor.
+
+    Todos los servidores del nodo comparten el puerto. Lo que los distingue es
+    el slug, así que la dirección que se comparte es la del nodo.
+    """
     server = await services.get_server(session, server_id)
     return ServerAddress(
         server_id=server.id,
         slug=server.slug,
-        host=server.bind_host,
-        port=server.bind_port,
-        is_reachable=server.status.accepts_traffic,
-        host_is_wildcard=services.is_wildcard_host(server.bind_host),
+        server_name=server.name,
+        is_active=server.status.accepts_traffic,
+        node=NodeAddress.model_validate(node_services.get_node_address()),
     )

@@ -55,12 +55,18 @@ class ChannelKind(StrEnum):
 class Server(Base):
     """Un servidor de Recop.
 
-    Corre en la máquina de su dueño. `bind_host` y `bind_port` son el par que
-    el dueño comparte con sus invitados.
+    Un servidor vive **dentro de un nodo**. El nodo es el proceso que corre en la
+    máquina del dueño, y es el nodo el que escucha en un puerto. Por eso esta
+    tabla no tiene `bind_port`: el puerto es del nodo, no del servidor. Varios
+    servidores comparten el mismo puerto y se distinguen por su `slug`.
 
-    Nota sobre el dueño: la persona que levanta el servidor es el dueño, y su
+    Esto es lo que permite que un cliente se conecte a una sola dirección y vea
+    todos sus servidores, y lo que hace que empaquetar Recop para mobile sea
+    viable en vez de un proceso por grupo de chat.
+
+    Nota sobre el dueño: la persona que levanta el nodo es el dueño, y su
     identidad local es un nickname. Todavía no hay una columna `owner_nickname`
-    porque la identidad llega en la PR de `identity`; ver `docs/architecture.md`.
+    porque la identidad llega en la app de `identity`.
     """
 
     __tablename__ = "servers"
@@ -83,16 +89,6 @@ class Server(Base):
     )
     """Estado del ciclo de vida. Ver `apps/servers/states.py`."""
 
-    bind_host: Mapped[str] = mapped_column(
-        String(255),
-        nullable=False,
-        default="0.0.0.0",  # noqa: S104 — un nodo autohospedado debe ser alcanzable por la red
-    )
-    """Interfaz donde escucha el proceso en la máquina del dueño."""
-
-    bind_port: Mapped[int] = mapped_column(Integer, nullable=False)
-    """Puerto abierto en la máquina del dueño. Es lo que se comparte."""
-
     max_members: Mapped[int] = mapped_column(SmallInteger, nullable=False, default=50)
     """Límite de miembros. Protege al dueño de un abuso de su propia máquina."""
 
@@ -107,13 +103,7 @@ class Server(Base):
         order_by="Channel.position",
     )
 
-    __table_args__ = (
-        CheckConstraint(
-            "bind_port BETWEEN 1 AND 65535",
-            name="valid_port",
-        ),
-        CheckConstraint("max_members > 0", name="positive_max_members"),
-    )
+    __table_args__ = (CheckConstraint("max_members > 0", name="positive_max_members"),)
 
 
 class Channel(Base):
