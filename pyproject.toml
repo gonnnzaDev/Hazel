@@ -82,6 +82,10 @@ ignore = [
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["S", "T20"]
 "migrations/**" = ["E501"]
+# Son CLIs: escriben su progreso en stdout para que el operador lo vea.
+# `logging` acá sumaría configuración sin aportar nada.
+"core/wait_for_db.py" = ["T201"]
+"core/cli.py" = ["T201"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["apps", "core"]

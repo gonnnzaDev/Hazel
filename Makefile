@@ -1,6 +1,6 @@
 # Recop — atajos de desarrollo
 .DEFAULT_GOAL := help
-.PHONY: help install up down logs api migrate revision test test-integration lint format typecheck check clean
+.PHONY: help install up down logs stack-up stack-down stack-logs api migrate revision test test-integration lint format typecheck check clean
 
 help: ## Mostrar esta ayuda
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
@@ -10,20 +10,31 @@ install: ## Instalar dependencias y crear el .venv
 	uv sync
 	@cp -n .env.example .env 2>/dev/null || true
 
-up: ## Levantar PostgreSQL y Kafka
-	docker compose up -d
+up: ## Levantar PostgreSQL y Kafka (compose de desarrollo)
+	docker compose -f docker-compose.dev.yml up -d
 	@echo "Esperando a que los servicios estén listos..."
-	@until docker compose exec -T postgres pg_isready -U $${POSTGRES_USER:-recop} >/dev/null 2>&1; do sleep 1; done
+	@until docker compose -f docker-compose.dev.yml exec -T postgres \
+		pg_isready -U $${POSTGRES_USER:-recop} >/dev/null 2>&1; do sleep 1; done
 	@echo "Listo."
 
 down: ## Apagar los servicios
-	docker compose down
+	docker compose -f docker-compose.dev.yml down
 
 reset: ## Apagar los servicios Y borrar los volúmenes (destructivo)
-	docker compose down -v
+	docker compose -f docker-compose.dev.yml down -v
 
 logs: ## Ver logs de los servicios
-	docker compose logs -f
+	docker compose -f docker-compose.dev.yml logs -f
+
+# ─── Todo containerizado ──────────────────────────────────────────────────────
+stack-up: ## Levantar nodo + PostgreSQL + Kafka (todo en containers)
+	docker compose up -d --build
+
+stack-down: ## Parar el stack
+	docker compose down
+
+stack-logs: ## Logs del nodo
+	docker compose logs -f api
 
 api: ## Levantar la API con recarga
 	uv run python -m core --reload
