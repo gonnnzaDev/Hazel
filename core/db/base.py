@@ -8,7 +8,7 @@ estar importados antes de correr una migración (ver `migrations/env.py`).
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import ClassVar
 
 from sqlalchemy import DateTime, MetaData, func
@@ -25,6 +25,11 @@ NAMING_CONVENTION = {
 }
 
 
+def _utcnow() -> datetime:
+    """Instante actual en UTC. Default de auditoría para todas las tablas."""
+    return datetime.now(UTC)
+
+
 class Base(DeclarativeBase):
     """Base declarativa con convención de nombres y tipos comunes."""
 
@@ -35,15 +40,25 @@ class Base(DeclarativeBase):
     }
 
     # ─── Helpers de auditoría, presentes en todas las tablas ───────────────────
+    #
+    # El default es de Python, no solo del servidor. Un `server_default` deja la
+    # columna marcada como expirada hasta que se haga un SELECT de refresco, y
+    # acceder a ella fuera de contexto async revienta con MissingGreenlet. Con
+    # el default en Python el objeto está completo apenas se inserta.
+    #
+    # El `server_default` se mantiene igual: cubre altas hechas por SQL directo
+    # o por una migración.
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
+        default=_utcnow,
         server_default=func.now(),
         nullable=False,
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
+        default=_utcnow,
+        onupdate=_utcnow,
         server_default=func.now(),
-        onupdate=func.now(),
         nullable=False,
     )

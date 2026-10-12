@@ -123,6 +123,15 @@ uv run mypy .                  # tipos
 uv run pytest                  # tests
 ```
 
+Los tests de integración necesitan PostgreSQL. Si no definís
+`RECOP_TEST_DATABASE_URL` se omiten solos, así que `pytest` funciona igual en un
+entorno sin infraestructura:
+
+```bash
+createdb recap_test
+make test-integration RECOP_TEST_DATABASE_URL=postgresql+asyncpg://recop:recop@localhost:5432/recop_test
+```
+
 ---
 
 ## Estado del desarrollo

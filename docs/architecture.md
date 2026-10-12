@@ -4,6 +4,9 @@ Documento de decisiones de diseño. Cada decisión está escrita con su *por qu�
 para que las conversaciones futuras tengan contexto y no se revierta todo cada
 vez que aparece una idea nueva.
 
+> El contrato de la API está en [`api.md`](./api.md). Este documento explica
+> **por qué**; aquel dice **qué**.
+
 ---
 
 ## 1. El producto: qué es un "servidor"
@@ -165,19 +168,58 @@ Lo que sí conviene sostener desde ahora:
 
 ## 7. Estado del servidor
 
-El ciclo de vida esperado por el producto:
+El ciclo de vida que implementa `apps/servers`:
 
 | Estado | Significado | ¿Acepta conexiones? |
 |---|---|---|
-| `creating` | Se está configurando | No |
-| `active` | Corriendo | Sí |
-| `inactive` | Proceso caído o apagado | **No** |
-| `deleting` | Se está eliminando | No |
+| `creating` | Se está configurando. Efímero, nunca se expone al cliente | No |
+| `active` | Corriendo | **Sí** |
+| `inactive` | Apagado o con el proceso caído | No |
 | `deleted` | Eliminado por el dueño | No |
 
-`inactive` es el estado clave: el servidor sigue existiendo con todos sus datos,
-solo no acepta tráfico. El nodo, al arrancar, marca como `inactive` cualquier
-servidor que quedara `active` en una ejecución anterior.
+Dos reglas que sostienen el producto:
+
+**Crear implica activar.** El dueño pidió desplegar, y un servidor desplegado
+escucha. No queda un estado intermedio que el cliente pueda observar.
+
+**Al arrancar el nodo, todo lo que figura `active` pasa a `inactive`.**
+Es lo que hace funcionar el requisito de que "si se cierra el proceso, el
+servidor quede inactivo pero no funcione". Sin esto, un servidor que se cayó
+seguiría marcado como `active` en la base y el sistema creería que su puerto
+está abierto. Al volver a encenderlo, el dueño lo reactiva y lo encuentra
+**igual**: mismos canales, mismos miembros, mismos mensajes.
+
+> No existe un estado `deleting`. Se evaluó y se descartó: el borrado es síncrono
+> e inmediato, así que un estado intermedio nunca sería observable por nadie.
+> Si algún día el borrado se vuelve asíncrono porque hay historial pesado que
+> limpiar, vuelve.
+
+### Endpoints
+
+```
+POST   /api/v1/servers                     desplegar (crea y activa)
+GET    /api/v1/servers                     listar, paginado
+GET    /api/v1/servers/{id}                detalle con canales
+GET    /api/v1/servers/by-slug/{slug}      buscar por el identificador que se comparte
+PATCH  /api/v1/servers/{id}                editar nombre / puerto / límite de miembros
+POST   /api/v1/servers/{id}/activate       volver a abrir el puerto
+POST   /api/v1/servers/{id}/deactivate     cerrar el puerto (conserva los datos)
+POST   /api/v1/servers/{id}/heartbeat      reportar que el proceso sigue vivo
+GET    /api/v1/servers/{id}/address        el host:puerto para compartir
+DELETE /api/v1/servers/{id}                eliminar de forma permanente
+```
+
+### Dos cosas que quedan sin resolver
+
+1. **La dirección compartible no siempre lo es.** Por defecto el nodo escucha en
+   `0.0.0.0`, que es un comodín: no se puede conectar a `0.0.0.0`. La API lo
+   marca con `host_is_wildcard: true` en vez de adivinar la IP del dueño, porque
+   un nodo puede tener VPN, docker o varias placas de red. Falta decidir cómo se
+   resuelve: ¿el dueño tipea su IP a mano, la detectamos, o se la pedimos una
+   vez al desplegar?
+2. **El borrado es duro.** Hoy `DELETE` elimina la fila. Con mensajes adentro
+   eso es irreversible. ¿Querés borrado lógico, o que se conserve y se marque el
+   servidor como eliminado?
 
 ---
 
