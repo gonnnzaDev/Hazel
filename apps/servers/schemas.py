@@ -13,6 +13,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from apps.common import nickname as nick
 from apps.common.types import RecordId
+from apps.node.schemas import NodeAddress
 from apps.servers.states import ServerStatus
 
 ServerName = Annotated[str, Field(min_length=2, max_length=64)]
@@ -24,7 +25,6 @@ convierte en `mi-casa`. Obligar al cliente a mandar el slug ya normalizado
 duplica una regla de negocio en el frontend y hace la API más estricta sin
 ganancia. La validación real se hace sobre el valor normalizado, en el service.
 """
-BindPort = Annotated[int, Field(ge=1, le=65535)]
 OwnerNickname = Annotated[str, Field(min_length=nick.MIN_LENGTH, max_length=nick.MAX_LENGTH)]
 
 
@@ -70,8 +70,6 @@ class ServerCreate(ServerBase):
     """
 
     owner_nickname: OwnerNickname
-    bind_host: Annotated[str, Field(default="0.0.0.0", max_length=255)]  # noqa: S104 — por defecto el nodo es alcanzable por la red
-    bind_port: BindPort
     max_members: Annotated[int, Field(default=50, ge=1, le=10_000)]
     channels: Annotated[list[ChannelCreate], Field(default_factory=list)]
 
@@ -87,7 +85,6 @@ class ServerUpdate(BaseModel):
     name: ServerName | None = None
     description: Annotated[str | None, Field(default=None, max_length=1000)]
     max_members: Annotated[int | None, Field(default=None, ge=1, le=10_000)]
-    bind_port: BindPort | None = None
 
 
 class ServerRead(ServerBase):
@@ -100,8 +97,6 @@ class ServerRead(ServerBase):
 
     id: RecordId
     status: ServerStatus
-    bind_host: str
-    bind_port: int
     max_members: int
     last_heartbeat_at: datetime | None
     created_at: datetime
@@ -115,34 +110,32 @@ class ServerRead(ServerBase):
 
 
 class ServerAddress(BaseModel):
-    """La dirección que el dueño comparte con sus invitados.
+    """La dirección por la que se entra a un servidor concreto.
 
-    Es lo único que necesita un amigo para conectarse.
+    Todos los servidores de un nodo comparten el puerto del nodo. Lo que cambia
+    es a cuál se llega, y eso lo decide el `slug`.
     """
 
     model_config = ConfigDict(from_attributes=True)
 
     server_id: RecordId
     slug: str
-    host: str
-    port: int
-    is_reachable: bool
-    host_is_wildcard: bool = False
-    """Si `host` es una dirección comodín (`0.0.0.0`).
+    server_name: str
+    is_active: bool
+    """Si el servidor acepta tráfico ahora mismo."""
 
-    Cuando es así, `host:port` **no sirve para conectarse**: `0.0.0.0` es donde
-    escucha el proceso, no una dirección a la que se pueda llegar. El dueño
-    tiene que reemplazar `0.0.0.0` por la IP de su máquina en la red local
-    (ej. `192.168.1.50`) antes de compartir la dirección.
-
-    Lo exponemos en vez de adivinar la IP por nuestra cuenta: un nodo puede
-    tener VPN, docker o varias placas de red, y adivinar mal es peor que
-    decirlo.
-    """
+    node: NodeAddress
+    """Dirección del nodo: puerto, interfaces candidatas y cuál se recomienda."""
 
     @property
-    def address(self) -> str:
-        return f"{self.host}:{self.port}"
+    def share_hint(self) -> str | None:
+        """La dirección para compartir, si se puede determinar.
+
+        Es None si el nodo está en una máquina donde no se pudo resolver ninguna
+        IP (por ejemplo, un contenedor sin red o una máquina sin interfaces).
+        """
+        recommended = self.node.recommended
+        return f"{recommended}:{self.node.port}" if recommended else None
 
 
 class ServerListResponse(BaseModel):

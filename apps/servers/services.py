@@ -80,37 +80,6 @@ async def slug_taken(session: AsyncSession, slug: str, *, exclude: RecordId | No
     return (await session.execute(stmt)).scalar_one() > 0
 
 
-async def port_taken(
-    session: AsyncSession, host: str, port: int, *, exclude: RecordId | None = None
-) -> bool:
-    """Si otro servidor **activo** ya escucha en ese par host:puerto.
-
-    Solo se comparan servidores `ACTIVE`: uno apagado tiene el puerto libre
-    aunque conserve el mismo número en la base.
-    """
-    stmt = (
-        select(func.count())
-        .select_from(Server)
-        .where(
-            Server.bind_host == host,
-            Server.bind_port == port,
-            Server.status == ServerStatus.ACTIVE,
-        )
-    )
-    if exclude is not None:
-        stmt = stmt.where(Server.id != exclude)
-    return (await session.execute(stmt)).scalar_one() > 0
-
-
-def _assert_port_free(session_free: bool, host: str, port: int) -> None:
-    if session_free:
-        raise ConflictError(
-            f"Ya hay un servidor activo escuchando en {host}:{port}.",
-            code="port_taken",
-            extra={"host": host, "port": port},
-        )
-
-
 # ──────────────────────────────────────────────────────────────────────────────
 # Lecturas
 # ──────────────────────────────────────────────────────────────────────────────
@@ -245,20 +214,12 @@ async def create_server(session: AsyncSession, payload: ServerCreate) -> Server:
             extra={"slug": slug},
         )
 
-    _assert_port_free(
-        await port_taken(session, payload.bind_host, payload.bind_port),
-        payload.bind_host,
-        payload.bind_port,
-    )
-
     server = Server(
         id=new_id(),
         name=payload.name.strip(),
         slug=slug,
         description=payload.description,
         status=ServerStatus.CREATING,
-        bind_host=payload.bind_host,
-        bind_port=payload.bind_port,
         max_members=payload.max_members,
         channels=_build_channels(payload.channels),
     )
@@ -272,26 +233,13 @@ async def create_server(session: AsyncSession, payload: ServerCreate) -> Server:
     server.last_heartbeat_at = utcnow()
     await session.flush()
 
-    logger.info(
-        "servidor desplegado slug=%s direccion=%s:%s",
-        server.slug,
-        server.bind_host,
-        server.bind_port,
-    )
+    logger.info("servidor desplegado slug=%s", server.slug)
     return server
 
 
 async def update_server(session: AsyncSession, server: Server, payload: ServerUpdate) -> Server:
     """Aplica cambios parciales a la configuración del servidor."""
     changes = payload.model_dump(exclude_unset=True)
-
-    new_port = changes.get("bind_port")
-    if new_port is not None and new_port != server.bind_port:
-        _assert_port_free(
-            await port_taken(session, server.bind_host, new_port, exclude=server.id),
-            server.bind_host,
-            new_port,
-        )
 
     for field, value in changes.items():
         setattr(server, field, value)
@@ -325,17 +273,11 @@ async def activate_server(session: AsyncSession, server: Server) -> Server:
             extra={"current": server.status.value, "target": ServerStatus.ACTIVE.value},
         )
 
-    _assert_port_free(
-        await port_taken(session, server.bind_host, server.bind_port, exclude=server.id),
-        server.bind_host,
-        server.bind_port,
-    )
-
     server.status = ServerStatus.ACTIVE
     server.last_heartbeat_at = utcnow()
     await session.flush()
 
-    logger.info("servidor activado slug=%s puerto=%s", server.slug, server.bind_port)
+    logger.info("servidor activado slug=%s", server.slug)
     return server
 
 
@@ -367,7 +309,7 @@ async def deactivate_server(session: AsyncSession, server: Server) -> Server:
     server.status = ServerStatus.INACTIVE
     await session.flush()
 
-    logger.info("servidor desactivado slug=%s puerto=%s", server.slug, server.bind_port)
+    logger.info("servidor desactivado slug=%s", server.slug)
     return server
 
 
