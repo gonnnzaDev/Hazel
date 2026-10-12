@@ -26,7 +26,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from apps.common.types import RecordId, new_id, utcnow
-from apps.servers.models import Channel, ChannelKind, Server
+from apps.servers.models import Channel, ChannelKind, Message, Server
 from apps.servers.schemas import ChannelCreate, ServerCreate, ServerUpdate
 from apps.servers.states import ServerStatus, can_transition
 from core.api.errors import (
@@ -188,15 +188,18 @@ def _ensure_default_channel(server: Server) -> None:
         server.channels[0].is_default = True
 
 
-async def create_server(session: AsyncSession, payload: ServerCreate) -> Server:
-    """Despliega un servidor nuevo y lo deja funcionando.
+async def create_server(session: AsyncSession, payload: ServerCreate, *, port: int) -> Server:
+    """Registra un grupo nuevo en la base.
 
-    Crear **implica activar**: el dueño pidió desplegar, y un servidor
-    desplegado escucha en su puerto. Nace `CREATING` y termina `ACTIVE` dentro
-    de esta misma operación, sin exponer un estado intermedio al cliente.
+    El puerto lo decide el caller, no esta función: asignarlo es trabajo del
+    proceso del nodo, que es el único que sabe qué puertos están ocupados en la
+    máquina. Ver `apps.node.services.create_group`, que es la entrada de verdad
+    para desplegar un grupo: asigna el puerto, levanta el proceso y recién
+    después llama a esta.
 
-    El puerto queda libre si algo sale mal en el camino: la transacción del
-    request hace rollback completo.
+    El grupo nace `CREATING`: el estado final lo pone quien levantó el proceso,
+    porque hasta que el proceso responde no se sabe si el grupo está-serving o
+    no. Marcarlo `ACTIVE` antes sería mentir.
     """
     slug = normalize_slug(payload.slug)
     if len(slug) < MIN_SLUG_LENGTH or len(slug) > MAX_SLUG_LENGTH:
@@ -220,6 +223,7 @@ async def create_server(session: AsyncSession, payload: ServerCreate) -> Server:
         slug=slug,
         description=payload.description,
         status=ServerStatus.CREATING,
+        bind_port=port,
         max_members=payload.max_members,
         channels=_build_channels(payload.channels),
     )
@@ -228,12 +232,7 @@ async def create_server(session: AsyncSession, payload: ServerCreate) -> Server:
     session.add(server)
     await session.flush()
 
-    # CREATING → ACTIVE dentro de la misma transacción.
-    server.status = ServerStatus.ACTIVE
-    server.last_heartbeat_at = utcnow()
-    await session.flush()
-
-    logger.info("servidor desplegado slug=%s", server.slug)
+    logger.info("servidor registrado slug=%s puerto=%s", server.slug, port)
     return server
 
 
@@ -396,3 +395,49 @@ def ensure_active(server: Server) -> None:
             f"que su dueño lo vuelva a activar.",
             extra={"server_id": str(server.id), "status": server.status.value},
         )
+
+
+async def create_message(
+    session: AsyncSession, channel_id: RecordId, author_nickname: str, content: str
+) -> Message:
+    """Registra un mensaje de texto en un canal.
+
+    El mensaje queda asociado al canal y se ordena por `created_at`.
+    No hay validación de permisos: cualquier cliente conectado al servidor
+    puede enviar mensajes (la regla de permisos la aplica el cliente).
+    """
+    message = Message(
+        id=new_id(),
+        channel_id=channel_id,
+        author_nickname=author_nickname,
+        content=content,
+    )
+    session.add(message)
+    await session.flush()
+    logger.info("mensaje registrado canal=%s nick=%s", channel_id, author_nickname)
+    return message
+
+
+async def list_messages(
+    session: AsyncSession, channel_id: RecordId, limit: int = 50, offset: int = 0
+) -> tuple[list[Message], int]:
+    """Devuelve el historial de mensajes de un canal, más recientes primero."""
+    total = (
+        await session.execute(
+            select(func.count()).select_from(Message).where(Message.channel_id == channel_id)
+        )
+    ).scalar_one()
+    stmt = (
+        select(Message)
+        .where(Message.channel_id == channel_id)
+        .order_by(Message.created_at.desc())
+        .limit(limit)
+        .offset(offset)
+    )
+    messages = (await session.execute(stmt)).scalars().all()
+    return list(messages), int(total)
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Guardas
+# ──────────────────────────────────────────────────────────────────────────────

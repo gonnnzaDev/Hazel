@@ -8,13 +8,18 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Path, Query, status
+from fastapi import APIRouter, Path, Query, Request, status
+from sqlalchemy import select
 
 from apps.common.types import RecordId
 from apps.node import services as node_services
 from apps.node.schemas import NodeAddress
 from apps.servers import services
+from apps.servers.models import Channel
 from apps.servers.schemas import (
+    MessageCreate,
+    MessageListResponse,
+    MessageRead,
     ServerAddress,
     ServerCreate,
     ServerListResponse,
@@ -36,13 +41,18 @@ QueryOffset = Annotated[int, Query(ge=0, description="Cuántos servidores saltar
     status_code=status.HTTP_201_CREATED,
     summary="Desplegar un servidor",
 )
-async def create_server(payload: ServerCreate, session: SessionDep) -> ServerRead:
+async def create_server(payload: ServerCreate, session: SessionDep, request: Request) -> ServerRead:
     """Crea un servidor en tu máquina y abre su puerto.
 
-    Es la operación que hace el dueño. El servidor queda activo y escuchando en
-    `bind_host:bind_port` desde el mismo momento en que responde.
+    En la app del nodo, esto delega en `apps.node.services.create_group`, que
+    además asigna el puerto y levanta el proceso del grupo. Esta ruta queda para
+    el modo de un solo proceso (desarrollo y tests), donde no hay supervisor.
+
+    En un proceso de grupo esta ruta no tiene sentido: un grupo no crea otros
+    grupos. Por eso pide el supervisor y falla con un mensaje claro si no lo hay.
     """
-    server = await services.create_server(session, payload)
+    supervisor = node_services.supervisor_from(request)
+    server = await node_services.create_group(session, supervisor, payload)
     return ServerRead.model_validate(server)
 
 
@@ -165,5 +175,52 @@ async def get_address(server_id: ServerId, session: SessionDep) -> ServerAddress
         slug=server.slug,
         server_name=server.name,
         is_active=server.status.accepts_traffic,
-        node=NodeAddress.model_validate(node_services.get_node_address()),
+        node=NodeAddress.model_validate(node_services.node_address()),
     )
+
+
+@router.post(
+    "/{server_id}/channels/{channel_id}/messages",
+    response_model=MessageRead,
+    summary="Enviar un mensaje de texto",
+)
+async def create_message(
+    server_id: ServerId,
+    channel_id: Annotated[RecordId, Path(description="Identificador del canal")],
+    payload: MessageCreate,
+    session: SessionDep,
+) -> MessageRead:
+    """Escribe un mensaje de texto en un canal del servidor.
+
+    El mensaje queda guardado en la base local del grupo y se muestra a los
+    miembros que entren después. No usa Kafka todavía: es la Fase 1 de chat.
+    """
+    server = await services.get_server(session, server_id)
+    # Verificamos que el channel pertenezca a este servidor
+    stmt = select(Channel).where(Channel.id == channel_id, Channel.server_id == server.id)
+    (await session.execute(stmt)).scalar_one()
+    message = await services.create_message(
+        session, channel_id=channel_id, author_nickname="anon", content=payload.content
+    )
+    return MessageRead.model_validate(message)
+
+
+@router.get(
+    "/{server_id}/channels/{channel_id}/messages",
+    response_model=MessageListResponse,
+    summary="Listar mensajes de un canal",
+)
+async def list_messages(
+    session: SessionDep,
+    server_id: ServerId,
+    channel_id: Annotated[RecordId, Path(description="Identificador del canal")],
+    limit: Annotated[int, Query(ge=1, le=100)] = 50,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> MessageListResponse:
+    """Devuelve el historial de mensajes de un canal, más recientes primero.
+
+    Los mensajes son locales al grupo: solo se ven los pertenecientes a este
+    servidor y canal. Si luego se habilita Kafka, los mensajes cruzados entre
+    grupos del mismo dueño se pueden sincronizar.
+    """
+    # (the server check happens inside)
