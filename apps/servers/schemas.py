@@ -105,6 +105,9 @@ class ServerRead(ServerBase):
 
     id: RecordId
     status: ServerStatus
+    bind_port: int
+    """Puerto del proceso del grupo. Es el que el dueño comparte."""
+
     max_members: int
     last_heartbeat_at: datetime | None
     created_at: datetime
