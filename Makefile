@@ -1,6 +1,6 @@
 # Recop — atajos de desarrollo
 .DEFAULT_GOAL := help
-.PHONY: help install setup up down logs stack-up stack-down stack-logs api migrate revision test test-integration lint format typecheck check clean
+.PHONY: help install setup up down logs stack-up stack-down stack-logs api front migrate revision test test-integration lint format typecheck check clean
 
 help: ## Mostrar esta ayuda
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
@@ -41,6 +41,10 @@ stack-logs: ## Logs del nodo
 
 api: ## Levantar la API con recarga
 	uv run python -m core --reload
+
+front: ## Abrir el cliente de escritorio (Electron)
+	@test -d front/node_modules || (cd front && npm install)
+	cd front && npm start
 
 migrate: ## Aplicar migraciones
 	uv run alembic upgrade head

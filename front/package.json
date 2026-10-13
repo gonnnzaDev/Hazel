@@ -1,0 +1,16 @@
+{
+  "name": "recop-desktop",
+  "productName": "Recop",
+  "version": "0.1.0",
+  "description": "Cliente de escritorio de Recop: tu chat, tu máquina, tu puerto.",
+  "main": "src/main.js",
+  "private": true,
+  "license": "GPL-3.0-or-later",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --dev"
+  },
+  "devDependencies": {
+    "electron": "^44.7.0"
+  }
+}
