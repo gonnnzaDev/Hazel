@@ -1,0 +1,1982 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Propuestas de interfaz · Recop</title>
+    <style>
+      /* Bocetos de distribución de la interfaz. No están conectados a nada:
+       * sirven para elegir hacia dónde llevar el cliente de escritorio.
+       * Cada boceto se dibuja en una grilla de 48 × 30 "em" y escala con el
+       * ancho de su tarjeta (container queries), así se ve igual chico o grande. */
+
+      :root {
+        --accent: #f27ba8;
+        --accent-strong: #c93d75;
+        --accent-soft: rgba(242, 123, 168, 0.16);
+        --accent-text: #c2306b;
+        --success: #23a55a;
+        --danger: #d83c3e;
+
+        --page: #f6f7f9;
+        --card: #ffffff;
+        --text: #2e3338;
+        --strong: #060607;
+        --muted: #5c5e66;
+        --border: #e1e2e4;
+
+        --m-rail: #e3e5e8;
+        --m-side: #f2f3f5;
+        --m-main: #ffffff;
+        --m-input: #ebedef;
+        --m-hover: rgba(116, 127, 141, 0.16);
+        --m-panel: #e9eaed;
+        --m-stage: #2b2d31;
+
+        color-scheme: light;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        :root:not([data-theme='light']) {
+          --accent-text: #f27ba8;
+          --page: #1e1f22;
+          --card: #2b2d31;
+          --text: #dbdee1;
+          --strong: #f2f3f5;
+          --muted: #949ba4;
+          --border: #3f4147;
+          --m-rail: #1e1f22;
+          --m-side: #2b2d31;
+          --m-main: #313338;
+          --m-input: #383a40;
+          --m-hover: rgba(78, 80, 88, 0.55);
+          --m-panel: #232428;
+          --m-stage: #111214;
+          color-scheme: dark;
+        }
+      }
+
+      :root[data-theme='dark'] {
+        --accent-text: #f27ba8;
+        --page: #1e1f22;
+        --card: #2b2d31;
+        --text: #dbdee1;
+        --strong: #f2f3f5;
+        --muted: #949ba4;
+        --border: #3f4147;
+        --m-rail: #1e1f22;
+        --m-side: #2b2d31;
+        --m-main: #313338;
+        --m-input: #383a40;
+        --m-hover: rgba(78, 80, 88, 0.55);
+        --m-panel: #232428;
+        --m-stage: #111214;
+        color-scheme: dark;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        background: var(--page);
+        color: var(--text);
+        font-family: 'Segoe UI', system-ui, -apple-system, 'Helvetica Neue', Arial, sans-serif;
+        font-size: 15px;
+        line-height: 1.45;
+      }
+
+      button {
+        font: inherit;
+        color: inherit;
+        cursor: pointer;
+      }
+
+      /* ─── Página ─────────────────────────────────────────────────────────── */
+
+      .page {
+        max-width: 1440px;
+        margin: 0 auto;
+        padding: 32px 24px 48px;
+      }
+
+      .intro {
+        display: flex;
+        align-items: flex-start;
+        gap: 16px;
+        margin-bottom: 28px;
+      }
+
+      .intro-logo {
+        width: 56px;
+        height: 56px;
+        flex-shrink: 0;
+      }
+
+      .intro h1 {
+        margin: 0 0 4px;
+        font-size: 26px;
+        color: var(--strong);
+      }
+
+      .intro p {
+        margin: 0;
+        color: var(--muted);
+        max-width: 760px;
+      }
+
+      .intro-text {
+        flex: 1;
+      }
+
+      .theme-btn {
+        flex-shrink: 0;
+        border: 1px solid var(--border);
+        background: var(--card);
+        border-radius: 6px;
+        padding: 6px 12px;
+        font-size: 14px;
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(min(100%, 420px), 1fr));
+        gap: 20px;
+      }
+
+      .card {
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        overflow: hidden;
+        cursor: zoom-in;
+        display: flex;
+        flex-direction: column;
+        transition: border-color 0.15s;
+      }
+
+      .card:hover,
+      .card:focus-visible {
+        border-color: var(--accent);
+        outline: none;
+      }
+
+      .card.is-current {
+        border-style: dashed;
+      }
+
+      .card .frame {
+        padding: 14px 14px 0;
+      }
+
+      .card-body {
+        padding: 14px 16px 16px;
+      }
+
+      .card-top {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+
+      .num {
+        width: 26px;
+        height: 26px;
+        border-radius: 50%;
+        display: grid;
+        place-items: center;
+        background: var(--accent-strong);
+        color: #fff;
+        font-weight: 700;
+        font-size: 13px;
+        flex-shrink: 0;
+      }
+
+      .is-current .num {
+        background: var(--muted);
+      }
+
+      .card h2 {
+        margin: 0;
+        font-size: 17px;
+        color: var(--strong);
+      }
+
+      .like {
+        margin: 4px 0 8px;
+        font-size: 13px;
+        color: var(--accent-text);
+        font-weight: 600;
+      }
+
+      .card p.desc {
+        margin: 0 0 10px;
+        font-size: 14px;
+      }
+
+      .tradeoffs {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        display: grid;
+        gap: 4px;
+        font-size: 13px;
+        color: var(--muted);
+      }
+
+      .tradeoffs li {
+        padding-left: 18px;
+        position: relative;
+      }
+
+      .tradeoffs li::before {
+        position: absolute;
+        left: 0;
+        font-weight: 700;
+      }
+
+      .tradeoffs .pro::before {
+        content: '+';
+        color: var(--success);
+      }
+
+      .tradeoffs .con::before {
+        content: '−';
+        color: var(--danger);
+      }
+
+      .foot {
+        margin-top: 28px;
+        color: var(--muted);
+        font-size: 14px;
+      }
+
+      /* ─── Vista grande ───────────────────────────────────────────────────── */
+
+      dialog {
+        width: min(1180px, calc(100vw - 32px));
+        max-height: calc(100vh - 32px);
+        padding: 0;
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        background: var(--card);
+        color: var(--text);
+      }
+
+      dialog::backdrop {
+        background: rgba(0, 0, 0, 0.6);
+      }
+
+      .zoom-head {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 12px 16px;
+        border-bottom: 1px solid var(--border);
+      }
+
+      .zoom-head h2 {
+        margin: 0;
+        font-size: 17px;
+        color: var(--strong);
+        flex: 1;
+      }
+
+      .zoom-head button {
+        border: 0;
+        background: var(--m-input);
+        border-radius: 6px;
+        padding: 6px 12px;
+      }
+
+      dialog .frame {
+        padding: 16px;
+      }
+
+      #zoom-desc {
+        margin: 0;
+        padding: 0 16px 16px;
+        color: var(--muted);
+      }
+
+      /* ─── Bocetos: piezas comunes ────────────────────────────────────────── */
+
+      .frame {
+        container-type: inline-size;
+      }
+
+      .mock {
+        display: grid;
+        width: 100%;
+        aspect-ratio: 16 / 10;
+        font-size: 8px;
+        font-size: calc(100cqw / 48);
+        background: var(--m-main);
+        color: var(--text);
+        border: 1px solid var(--border);
+        border-radius: 0.7em;
+        overflow: hidden;
+        line-height: 1.3;
+        user-select: none;
+      }
+
+      .col {
+        display: flex;
+        flex-direction: column;
+        min-width: 0;
+        min-height: 0;
+      }
+
+      .grow {
+        flex: 1;
+        min-height: 0;
+      }
+
+      .sp {
+        flex: 1;
+      }
+
+      .m-rail {
+        background: var(--m-rail);
+        align-items: center;
+        gap: 0.5em;
+        padding: 0.7em 0;
+      }
+
+      .m-side {
+        background: var(--m-side);
+      }
+
+      .m-main {
+        background: var(--m-main);
+      }
+
+      .m-head {
+        height: 2.8em;
+        flex-shrink: 0;
+        display: flex;
+        align-items: center;
+        gap: 0.5em;
+        padding: 0 0.9em;
+        border-bottom: 1px solid var(--border);
+        font-weight: 600;
+        color: var(--strong);
+        white-space: nowrap;
+        overflow: hidden;
+      }
+
+      .m-head small {
+        font-weight: 400;
+        color: var(--muted);
+        font-size: 0.85em;
+      }
+
+      .pad {
+        padding: 0.6em;
+      }
+
+      .i {
+        width: 1.1em;
+        height: 1.1em;
+        flex-shrink: 0;
+        fill: none;
+        stroke: currentColor;
+        stroke-width: 2;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+        color: var(--muted);
+      }
+
+      .m-label {
+        font-size: 0.7em;
+        font-weight: 700;
+        letter-spacing: 0.03em;
+        text-transform: uppercase;
+        color: var(--muted);
+        margin: 0.9em 0.6em 0.3em;
+      }
+
+      .m-ch {
+        display: flex;
+        align-items: center;
+        gap: 0.45em;
+        padding: 0.3em 0.55em;
+        border-radius: 0.35em;
+        color: var(--muted);
+        font-size: 0.95em;
+        white-space: nowrap;
+      }
+
+      .m-ch.on {
+        background: var(--m-hover);
+        color: var(--strong);
+      }
+
+      .m-ch.on .i {
+        color: var(--strong);
+      }
+
+      .m-vu {
+        display: flex;
+        align-items: center;
+        gap: 0.45em;
+        padding: 0.15em 0.55em 0.15em 2em;
+        font-size: 0.85em;
+        color: var(--muted);
+        white-space: nowrap;
+      }
+
+      .av {
+        width: 2.2em;
+        height: 2.2em;
+        border-radius: 50%;
+        display: inline-grid;
+        place-items: center;
+        color: #fff;
+        font-weight: 700;
+        font-size: 0.85em;
+        flex-shrink: 0;
+      }
+
+      .av.xs {
+        width: 1.6em;
+        height: 1.6em;
+        font-size: 0.7em;
+      }
+
+      .av.lg {
+        width: 4.6em;
+        height: 4.6em;
+        font-size: 1.1em;
+      }
+
+      .av.talk {
+        box-shadow: 0 0 0 0.15em var(--m-side), 0 0 0 0.32em var(--success);
+      }
+
+      .sq {
+        width: 3em;
+        height: 3em;
+        border-radius: 50%;
+        display: grid;
+        place-items: center;
+        background: var(--m-main);
+        color: var(--text);
+        font-weight: 700;
+        font-size: 0.85em;
+        flex-shrink: 0;
+      }
+
+      .sq.on {
+        border-radius: 30%;
+        background: var(--accent-strong);
+        color: #fff;
+      }
+
+      .sq.round {
+        border-radius: 30%;
+        color: #fff;
+      }
+
+      .sq.sm {
+        width: 2.4em;
+        height: 2.4em;
+        font-size: 0.75em;
+      }
+
+      /* Colores de avatar e íconos: después de .sq para que no los pise. */
+      .c1 {
+        background: #5865a8;
+      }
+      .c2 {
+        background: #3e8e7e;
+      }
+      .c3 {
+        background: #c93d75;
+      }
+      .c4 {
+        background: #b7791f;
+      }
+      .c5 {
+        background: #7a5aa6;
+      }
+      .c6 {
+        background: #4f7cac;
+      }
+
+      .logo {
+        width: 3em;
+        height: 3em;
+        flex-shrink: 0;
+      }
+
+      .logo.sm {
+        width: 1.8em;
+        height: 1.8em;
+      }
+
+      .sep {
+        width: 1.8em;
+        height: 0.15em;
+        background: var(--border);
+        border-radius: 1em;
+      }
+
+      .msgs {
+        flex: 1;
+        min-height: 0;
+        display: flex;
+        flex-direction: column;
+        justify-content: flex-end;
+        gap: 0.8em;
+        padding: 0.8em 1em;
+        overflow: hidden;
+      }
+
+      .msg {
+        display: flex;
+        gap: 0.65em;
+      }
+
+      .msg b {
+        color: var(--strong);
+        font-size: 0.9em;
+      }
+
+      .msg small {
+        color: var(--muted);
+        font-size: 0.72em;
+        margin-left: 0.4em;
+      }
+
+      .msg p {
+        margin: 0.1em 0 0;
+        font-size: 0.88em;
+      }
+
+      .tag {
+        font-size: 0.65em;
+        font-weight: 700;
+        padding: 0.05em 0.5em;
+        border-radius: 0.4em;
+        background: var(--accent-soft);
+        color: var(--accent-text);
+        margin-left: 0.4em;
+      }
+
+      .input {
+        flex-shrink: 0;
+        margin: 0 0.9em 0.9em;
+        padding: 0.65em 0.9em;
+        border-radius: 0.6em;
+        background: var(--m-input);
+        color: var(--muted);
+        font-size: 0.85em;
+      }
+
+      .user {
+        flex-shrink: 0;
+        display: flex;
+        align-items: center;
+        gap: 0.5em;
+        padding: 0.55em 0.7em;
+        background: var(--m-panel);
+        font-size: 0.85em;
+      }
+
+      .user b {
+        color: var(--strong);
+        display: block;
+        line-height: 1.1;
+      }
+
+      .user small {
+        color: var(--muted);
+        font-size: 0.8em;
+      }
+
+      .m-mem {
+        display: flex;
+        align-items: center;
+        gap: 0.5em;
+        padding: 0.3em 0.55em;
+        font-size: 0.88em;
+        white-space: nowrap;
+      }
+
+      .btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35em;
+        padding: 0.35em 0.8em;
+        border-radius: 0.4em;
+        background: var(--accent-strong);
+        color: #fff;
+        font-weight: 600;
+        font-size: 0.8em;
+        white-space: nowrap;
+      }
+
+      .btn .i {
+        color: #fff;
+      }
+
+      .btn.ghost {
+        background: var(--m-input);
+        color: var(--text);
+      }
+
+      .btn.ghost .i {
+        color: var(--text);
+      }
+
+      .btn.red {
+        background: var(--danger);
+      }
+
+      .pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35em;
+        font-size: 0.7em;
+        font-weight: 700;
+        padding: 0.1em 0.6em;
+        border-radius: 1em;
+        background: var(--m-input);
+        color: var(--muted);
+        white-space: nowrap;
+      }
+
+      .pill::before {
+        content: '';
+        width: 0.6em;
+        height: 0.6em;
+        border-radius: 50%;
+        background: currentColor;
+      }
+
+      .pill.on {
+        color: var(--success);
+      }
+
+      .dot {
+        width: 0.65em;
+        height: 0.65em;
+        border-radius: 50%;
+        background: var(--muted);
+        flex-shrink: 0;
+      }
+
+      .dot.on {
+        background: var(--success);
+      }
+
+      .badge {
+        min-width: 1.5em;
+        height: 1.5em;
+        padding: 0 0.4em;
+        border-radius: 1em;
+        background: var(--accent-strong);
+        color: #fff;
+        font-size: 0.7em;
+        font-weight: 700;
+        display: inline-grid;
+        place-items: center;
+      }
+
+      .stack {
+        display: flex;
+      }
+
+      .stack .av {
+        margin-left: -0.45em;
+        box-shadow: 0 0 0 0.15em var(--m-main);
+      }
+
+      .stack .av:first-child {
+        margin-left: 0;
+      }
+
+      .mono {
+        font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace;
+        font-size: 0.8em;
+        color: var(--muted);
+      }
+
+      .ibtn {
+        width: 2.2em;
+        height: 2.2em;
+        border-radius: 0.4em;
+        display: grid;
+        place-items: center;
+        flex-shrink: 0;
+      }
+
+      .ibtn.round {
+        border-radius: 50%;
+        background: var(--m-input);
+      }
+
+      .ibtn.round.red {
+        background: var(--danger);
+      }
+
+      .ibtn.round.red .i {
+        color: #fff;
+      }
+
+      /* ─── 0 · Actual ─────────────────────────────────────────────────────── */
+
+      .p0 {
+        grid-template-columns: 4em 11em 1fr 9.5em;
+      }
+
+      /* ─── 1 · Conversaciones ─────────────────────────────────────────────── */
+
+      .p1 {
+        grid-template-columns: 16.5em 1fr;
+      }
+
+      .p1 .top {
+        display: flex;
+        align-items: center;
+        gap: 0.5em;
+        padding: 0.7em 0.8em 0.4em;
+        font-weight: 700;
+        color: var(--strong);
+      }
+
+      .search {
+        margin: 0.3em 0.7em 0.5em;
+        padding: 0.45em 0.7em;
+        border-radius: 0.5em;
+        background: var(--m-input);
+        color: var(--muted);
+        font-size: 0.78em;
+        display: flex;
+        align-items: center;
+        gap: 0.4em;
+      }
+
+      .conv {
+        display: flex;
+        align-items: center;
+        gap: 0.55em;
+        padding: 0.5em 0.7em;
+        margin: 0 0.35em;
+        border-radius: 0.5em;
+      }
+
+      .conv.on {
+        background: var(--m-hover);
+      }
+
+      .conv-text {
+        flex: 1;
+        min-width: 0;
+      }
+
+      .conv-text b {
+        display: block;
+        font-size: 0.85em;
+        color: var(--strong);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .conv-text span {
+        display: block;
+        font-size: 0.75em;
+        color: var(--muted);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .conv-meta {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-end;
+        gap: 0.2em;
+        font-size: 0.7em;
+        color: var(--muted);
+      }
+
+      .voice-line {
+        color: var(--success) !important;
+      }
+
+      /* ─── 2 · Pestañas ───────────────────────────────────────────────────── */
+
+      .p2 {
+        grid-template-columns: 11em 1fr;
+        grid-template-rows: 2.9em 1fr;
+      }
+
+      .tabs {
+        grid-column: 1 / -1;
+        display: flex;
+        align-items: flex-end;
+        gap: 0.25em;
+        padding: 0 0.6em;
+        background: var(--m-rail);
+      }
+
+      .tabs .logo {
+        align-self: center;
+        margin-right: 0.4em;
+      }
+
+      .tab {
+        display: flex;
+        align-items: center;
+        gap: 0.45em;
+        padding: 0.45em 0.8em 0.55em;
+        border-radius: 0.6em 0.6em 0 0;
+        font-size: 0.82em;
+        color: var(--muted);
+        white-space: nowrap;
+      }
+
+      .tab.on {
+        background: var(--m-side);
+        color: var(--strong);
+        font-weight: 600;
+      }
+
+      .tab .x {
+        color: var(--muted);
+        font-size: 0.9em;
+      }
+
+      .tabs .tab-plus {
+        align-self: center;
+        margin-left: 0.2em;
+      }
+
+      .tabs .gear {
+        align-self: center;
+        margin-left: auto;
+      }
+
+      /* ─── 3 · Selector + panel de info ───────────────────────────────────── */
+
+      .p3 {
+        grid-template-columns: 12.5em 1fr 12em;
+        position: relative;
+      }
+
+      .switcher {
+        margin: 0.6em;
+        padding: 0.45em 0.55em;
+        border-radius: 0.5em;
+        background: var(--m-main);
+        border: 1px solid var(--border);
+        display: flex;
+        align-items: center;
+        gap: 0.5em;
+        font-weight: 700;
+        font-size: 0.88em;
+        color: var(--strong);
+      }
+
+      .dropdown {
+        position: absolute;
+        left: 0.6em;
+        top: 3.9em;
+        width: 14em;
+        padding: 0.35em;
+        border-radius: 0.6em;
+        background: var(--card);
+        border: 1px solid var(--border);
+        box-shadow: 0 0.6em 1.6em rgba(0, 0, 0, 0.22);
+        z-index: 2;
+      }
+
+      .dd-item {
+        display: flex;
+        align-items: center;
+        gap: 0.5em;
+        padding: 0.4em 0.5em;
+        border-radius: 0.4em;
+        font-size: 0.82em;
+      }
+
+      .dd-item.on {
+        background: var(--m-hover);
+        font-weight: 600;
+        color: var(--strong);
+      }
+
+      .dd-sep {
+        height: 1px;
+        margin: 0.3em 0.4em;
+        background: var(--border);
+      }
+
+      .info-block {
+        margin: 0.4em 0.7em 0.6em;
+        padding: 0.6em;
+        border-radius: 0.5em;
+        background: var(--m-main);
+        border: 1px solid var(--border);
+        font-size: 0.8em;
+      }
+
+      .info-block b {
+        display: block;
+        color: var(--strong);
+        margin-bottom: 0.3em;
+      }
+
+      /* ─── 4 · Salas ──────────────────────────────────────────────────────── */
+
+      .p4 {
+        grid-template-rows: 3em 1fr;
+        background: var(--m-side);
+      }
+
+      .bar {
+        display: flex;
+        align-items: center;
+        gap: 0.6em;
+        padding: 0 1em;
+        background: var(--m-main);
+        border-bottom: 1px solid var(--border);
+        font-weight: 700;
+        color: var(--strong);
+        white-space: nowrap;
+      }
+
+      .rooms {
+        padding: 1em 1.2em;
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        grid-template-rows: auto 1fr 1fr;
+        gap: 0.8em;
+        min-height: 0;
+      }
+
+      .rooms .m-label {
+        grid-column: 1 / -1;
+        margin: 0;
+      }
+
+      .room {
+        background: var(--m-main);
+        border: 1px solid var(--border);
+        border-radius: 0.7em;
+        padding: 0.8em;
+        display: flex;
+        flex-direction: column;
+        gap: 0.45em;
+        min-height: 0;
+        overflow: hidden;
+      }
+
+      .room-title {
+        display: flex;
+        align-items: center;
+        gap: 0.4em;
+        font-weight: 700;
+        color: var(--strong);
+        font-size: 0.95em;
+      }
+
+      .room p {
+        margin: 0;
+        font-size: 0.78em;
+        color: var(--muted);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .room p b {
+        color: var(--text);
+      }
+
+      .room .stack .av {
+        box-shadow: 0 0 0 0.15em var(--m-main);
+      }
+
+      .room.voice {
+        border-color: rgba(35, 165, 90, 0.5);
+      }
+
+      .room.new {
+        border-style: dashed;
+        align-items: center;
+        justify-content: center;
+        color: var(--muted);
+        font-weight: 600;
+        font-size: 0.9em;
+        background: transparent;
+      }
+
+      /* ─── 5 · Árbol ──────────────────────────────────────────────────────── */
+
+      .p5 {
+        grid-template-columns: 16.5em 1fr;
+      }
+
+      .tree {
+        padding: 0.4em 0.5em;
+        font-size: 0.92em;
+      }
+
+      .node {
+        display: flex;
+        align-items: center;
+        gap: 0.45em;
+        padding: 0.22em 0.4em;
+        border-radius: 0.35em;
+        white-space: nowrap;
+        color: var(--muted);
+      }
+
+      .node.srv {
+        color: var(--strong);
+        font-weight: 700;
+      }
+
+      .node.off {
+        opacity: 0.55;
+      }
+
+      .node.on {
+        background: var(--m-hover);
+        color: var(--strong);
+      }
+
+      .node.l1 {
+        padding-left: 1.7em;
+      }
+
+      .node.l2 {
+        padding-left: 3.1em;
+        font-size: 0.92em;
+      }
+
+      .caret {
+        width: 0.8em;
+        color: var(--muted);
+        font-size: 0.8em;
+      }
+
+      .voicebar {
+        flex-shrink: 0;
+        display: flex;
+        align-items: center;
+        gap: 0.4em;
+        padding: 0.5em 0.6em;
+        background: var(--m-panel);
+        border-top: 1px solid var(--border);
+        font-size: 0.82em;
+      }
+
+      .voicebar b {
+        color: var(--success);
+        display: block;
+      }
+
+      .voicebar small {
+        color: var(--muted);
+      }
+
+      /* ─── 6 · Llamada arriba ─────────────────────────────────────────────── */
+
+      .p6 {
+        grid-template-columns: 11.5em 1fr;
+      }
+
+      .stage {
+        flex-shrink: 0;
+        background: var(--m-stage);
+        padding: 0.9em 1em 0.7em;
+        display: flex;
+        flex-direction: column;
+        gap: 0.7em;
+      }
+
+      .tiles {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 0.6em;
+      }
+
+      .tile {
+        border-radius: 0.6em;
+        background: rgba(255, 255, 255, 0.06);
+        padding: 0.7em 0.4em 0.5em;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 0.4em;
+        color: #dbdee1;
+        font-size: 0.78em;
+        position: relative;
+      }
+
+      .tile .av.talk {
+        box-shadow: 0 0 0 0.15em var(--m-stage), 0 0 0 0.32em var(--success);
+      }
+
+      .tile .muted-ic {
+        position: absolute;
+        right: 0.5em;
+        top: 0.5em;
+      }
+
+      .tile .muted-ic .i {
+        color: var(--danger);
+      }
+
+      .controls {
+        display: flex;
+        justify-content: center;
+        gap: 0.6em;
+      }
+
+      .stage .ibtn.round {
+        background: rgba(255, 255, 255, 0.1);
+      }
+
+      .stage .ibtn.round .i {
+        color: #dbdee1;
+      }
+
+      .stage .ibtn.round.red {
+        background: var(--danger);
+      }
+
+      /* ─── 7 · Compacta ───────────────────────────────────────────────────── */
+
+      .p7 {
+        background: var(--m-rail);
+        grid-template-columns: 1fr auto 1fr;
+        align-items: center;
+        justify-items: center;
+        padding: 1.2em 3em;
+      }
+
+      .phone {
+        width: 15em;
+        height: 27em;
+        border-radius: 1.2em;
+        background: var(--m-main);
+        border: 1px solid var(--border);
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+        box-shadow: 0 0.5em 1.4em rgba(0, 0, 0, 0.12);
+      }
+
+      .phone .m-head {
+        font-size: 0.95em;
+      }
+
+      .tabbar {
+        flex-shrink: 0;
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        border-top: 1px solid var(--border);
+        background: var(--m-side);
+      }
+
+      .tabbar span {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 0.15em;
+        padding: 0.45em 0 0.5em;
+        font-size: 0.68em;
+        color: var(--muted);
+      }
+
+      .tabbar span.on,
+      .tabbar span.on .i {
+        color: var(--accent-text);
+        font-weight: 700;
+      }
+
+      .arrow {
+        color: var(--muted);
+        font-size: 2.2em;
+      }
+
+      /* ─── 8 · Panel del dueño ────────────────────────────────────────────── */
+
+      .p8 {
+        grid-template-rows: 3em 1fr;
+        background: var(--m-side);
+      }
+
+      .nav {
+        display: flex;
+        align-items: center;
+        gap: 1.2em;
+        padding: 0 1em;
+        background: var(--m-main);
+        border-bottom: 1px solid var(--border);
+        font-size: 0.88em;
+        white-space: nowrap;
+      }
+
+      .nav .brand {
+        display: flex;
+        align-items: center;
+        gap: 0.4em;
+        font-weight: 700;
+        color: var(--strong);
+      }
+
+      .nav a {
+        color: var(--muted);
+        text-decoration: none;
+        padding: 0.9em 0 0.75em;
+        border-bottom: 0.18em solid transparent;
+      }
+
+      .nav a.on {
+        color: var(--strong);
+        font-weight: 600;
+        border-bottom-color: var(--accent);
+      }
+
+      .dash {
+        padding: 1em 1.2em;
+        display: flex;
+        flex-direction: column;
+        gap: 0.9em;
+        min-height: 0;
+      }
+
+      .stats {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 0.8em;
+      }
+
+      .stat {
+        background: var(--m-main);
+        border: 1px solid var(--border);
+        border-radius: 0.6em;
+        padding: 0.6em 0.8em;
+      }
+
+      .stat b {
+        display: block;
+        font-size: 1.5em;
+        color: var(--strong);
+        line-height: 1.1;
+      }
+
+      .stat span {
+        font-size: 0.75em;
+        color: var(--muted);
+      }
+
+      .srv-cards {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 0.8em;
+        flex: 1;
+        min-height: 0;
+      }
+
+      .srv-card {
+        background: var(--m-main);
+        border: 1px solid var(--border);
+        border-radius: 0.7em;
+        padding: 0.8em;
+        display: flex;
+        flex-direction: column;
+        gap: 0.45em;
+        min-width: 0;
+      }
+
+      .srv-card.off {
+        opacity: 0.75;
+      }
+
+      .srv-card-top {
+        display: flex;
+        align-items: center;
+        gap: 0.5em;
+      }
+
+      .srv-card-top b {
+        color: var(--strong);
+        font-size: 0.92em;
+        display: block;
+      }
+
+      .srv-card p {
+        margin: 0;
+        font-size: 0.75em;
+        color: var(--muted);
+      }
+
+      .srv-card .row {
+        display: flex;
+        gap: 0.4em;
+        margin-top: auto;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- Íconos compartidos por todos los bocetos (basados en Feather, MIT). -->
+    <svg width="0" height="0" style="position: absolute" aria-hidden="true">
+      <symbol id="i-hash" viewBox="0 0 24 24">
+        <line x1="4" y1="9" x2="20" y2="9" />
+        <line x1="4" y1="15" x2="20" y2="15" />
+        <line x1="10" y1="3" x2="8" y2="21" />
+        <line x1="16" y1="3" x2="14" y2="21" />
+      </symbol>
+      <symbol id="i-vol" viewBox="0 0 24 24">
+        <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+        <path d="M15.54 8.46a5 5 0 0 1 0 7.07M19.07 4.93a10 10 0 0 1 0 14.14" />
+      </symbol>
+      <symbol id="i-mic" viewBox="0 0 24 24">
+        <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
+        <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+        <line x1="12" y1="19" x2="12" y2="23" />
+      </symbol>
+      <symbol id="i-micoff" viewBox="0 0 24 24">
+        <line x1="1" y1="1" x2="23" y2="23" />
+        <path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6" />
+        <path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2a7 7 0 0 1-.11 1.23" />
+      </symbol>
+      <symbol id="i-head" viewBox="0 0 24 24">
+        <path d="M3 18v-6a9 9 0 0 1 18 0v6" />
+        <path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z" />
+      </symbol>
+      <symbol id="i-phone" viewBox="0 0 24 24">
+        <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z" />
+      </symbol>
+      <symbol id="i-plus" viewBox="0 0 24 24">
+        <line x1="12" y1="5" x2="12" y2="19" />
+        <line x1="5" y1="12" x2="19" y2="12" />
+      </symbol>
+      <symbol id="i-search" viewBox="0 0 24 24">
+        <circle cx="11" cy="11" r="8" />
+        <line x1="21" y1="21" x2="16.65" y2="16.65" />
+      </symbol>
+      <symbol id="i-down" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9" /></symbol>
+      <symbol id="i-back" viewBox="0 0 24 24">
+        <line x1="19" y1="12" x2="5" y2="12" />
+        <polyline points="12 19 5 12 12 5" />
+      </symbol>
+      <symbol id="i-users" viewBox="0 0 24 24">
+        <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+        <circle cx="9" cy="7" r="4" />
+        <path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" />
+      </symbol>
+      <symbol id="i-copy" viewBox="0 0 24 24">
+        <rect x="9" y="9" width="13" height="13" rx="2" />
+        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+      </symbol>
+      <symbol id="i-power" viewBox="0 0 24 24">
+        <path d="M18.36 6.64a9 9 0 1 1-12.73 0" />
+        <line x1="12" y1="2" x2="12" y2="12" />
+      </symbol>
+      <symbol id="i-gear" viewBox="0 0 24 24">
+        <circle cx="12" cy="12" r="3" />
+        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+      </symbol>
+      <symbol id="i-chat" viewBox="0 0 24 24">
+        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+      </symbol>
+      <symbol id="i-server" viewBox="0 0 24 24">
+        <rect x="2" y="2" width="20" height="8" rx="2" />
+        <rect x="2" y="14" width="20" height="8" rx="2" />
+        <line x1="6" y1="6" x2="6.01" y2="6" />
+        <line x1="6" y1="18" x2="6.01" y2="18" />
+      </symbol>
+      <symbol id="i-logo" viewBox="0 0 1024 1024">
+        <rect width="1024" height="1024" rx="232" fill="#F27BA8" stroke="none" />
+        <path fill="#FFFFFF" stroke="none" fill-rule="evenodd" d="M358.4 391.9C330.6 365 309.9 329 304.5 277C264 314.7 250.7 386.1 278.2 445.8Q282.7 441.6 287.3 437.5Q319 410.1 358.4 391.9ZM745.8 445.8Q741.3 441.6 736.7 437.5Q705 410.1 665.6 391.9C693.4 365 714.1 329 719.5 277C760 314.7 773.3 386.1 745.8 445.8ZM512 376.9C685.9 376.9 808.4 490 808.4 626.5C808.4 743.5 728.8 763 512 763C295.2 763 215.6 743.5 215.6 626.5C215.6 490 338.1 376.9 512 376.9ZM429.3 539.9L429.3 596Q429.3 600.1 427.8 603.8Q426.2 607.5 423.4 610.4Q420.5 613.2 416.8 614.8Q413.1 616.3 409 616.3Q405 616.3 401.3 614.8Q397.6 613.2 394.7 610.4Q391.8 607.5 390.3 603.8Q388.8 600.1 388.8 596L388.8 539.9Q388.8 535.9 390.3 532.1Q391.8 528.4 394.7 525.5Q397.6 522.7 401.3 521.2Q405 519.6 409 519.6Q413.1 519.6 416.8 521.2Q420.5 522.7 423.4 525.5Q426.2 528.4 427.8 532.1Q429.3 535.9 429.3 539.9ZM594.7 539.9L594.7 596Q594.7 600.1 596.2 603.8Q597.8 607.5 600.6 610.4Q603.5 613.2 607.2 614.8Q610.9 616.3 615 616.3Q619 616.3 622.7 614.8Q626.4 613.2 629.3 610.4Q632.2 607.5 633.7 603.8Q635.2 600.1 635.2 596L635.2 539.9Q635.2 535.9 633.7 532.1Q632.2 528.4 629.3 525.5Q626.4 522.7 622.7 521.2Q619 519.6 615 519.6Q610.9 519.6 607.2 521.2Q603.5 522.7 600.6 525.5Q597.8 528.4 596.2 532.1Q594.7 535.9 594.7 539.9ZM488.3 671Q479.9 670 470 657.6Q468.7 656 467 655Q465.2 654.1 463.2 653.8Q461.2 653.6 459.3 654.2Q457.3 654.7 455.7 656Q454.2 657.3 453.2 659Q452.2 660.8 452 662.8Q451.8 664.8 452.3 666.7Q452.9 668.7 454.2 670.2Q469.2 689.1 485.8 691.1Q499.3 692.8 512 683.5Q524.7 692.8 538.2 691.1Q554.8 689.1 569.8 670.2Q571.1 668.7 571.7 666.7Q572.2 664.8 572 662.8Q571.8 660.8 570.8 659Q569.8 657.3 568.3 656Q566.7 654.7 564.7 654.2Q562.8 653.6 560.8 653.8Q558.8 654.1 557 655Q555.3 656 554 657.6Q544.1 670 535.7 671Q528.1 672 519.2 663Q517.7 661.6 515.9 660.8Q514 660 512 660Q510 660 508.1 660.8Q506.3 661.6 504.8 663Q495.9 672 488.3 671Z" />
+      </symbol>
+    </svg>
+
+    <div class="page">
+      <header class="intro">
+        <svg class="intro-logo" aria-hidden="true"><use href="#i-logo" /></svg>
+        <div class="intro-text">
+          <h1>Propuestas de interfaz</h1>
+          <p>
+            Distintas formas de ordenar lo mismo: servidores, canales, chat, voz y miembros. Son bocetos, no
+            están conectados a nada. Hacé clic en cualquiera para verla grande, y decime el número de la que
+            más te guste (o combinaciones, como “la 1 con la llamada de la 6”).
+          </p>
+        </div>
+        <button class="theme-btn" id="theme-btn" type="button">Tema: sistema</button>
+      </header>
+
+      <main class="grid">
+        <!-- 0 · Actual ─────────────────────────────────────────────────────── -->
+        <article class="card is-current" tabindex="0">
+          <div class="frame">
+            <div class="mock p0">
+              <div class="col m-rail">
+                <svg class="logo"><use href="#i-logo" /></svg>
+                <span class="sep"></span>
+                <span class="sq on">CdL</span>
+                <span class="sq">GdM</span>
+                <span class="sq"><svg class="i" style="color: var(--success)"><use href="#i-plus" /></svg></span>
+              </div>
+              <div class="col m-side">
+                <div class="m-head">Casa de Luis <span class="sp"></span><svg class="i"><use href="#i-down" /></svg></div>
+                <div class="grow pad">
+                  <div class="m-label">Canales de texto</div>
+                  <div class="m-ch on"><svg class="i"><use href="#i-hash" /></svg>general</div>
+                  <div class="m-ch"><svg class="i"><use href="#i-hash" /></svg>memes</div>
+                  <div class="m-label">Canales de voz</div>
+                  <div class="m-ch"><svg class="i"><use href="#i-vol" /></svg>charla</div>
+                  <div class="m-vu"><span class="av xs c1 talk">L</span>Luis</div>
+                  <div class="m-vu"><span class="av xs c2">A</span>Ana</div>
+                </div>
+                <div class="user"><span class="av xs c1">L</span><div><b>Luis</b><small>@luis</small></div></div>
+              </div>
+              <div class="col m-main">
+                <div class="m-head"><svg class="i"><use href="#i-hash" /></svg>general</div>
+                <div class="msgs">
+                  <div class="msg"><span class="av c1">L</span><div><b>Luis</b><span class="tag">Dueño</span><small>21:54</small><p>Buenas! Bienvenidos</p></div></div>
+                  <div class="msg"><span class="av c2">A</span><div><b>Ana</b><small>22:10</small><p>¿Se suman a las 10?</p></div></div>
+                </div>
+                <div class="input">Escribí en #general</div>
+              </div>
+              <div class="col m-side">
+                <div class="m-label">Dueño — 1</div>
+                <div class="m-mem"><span class="av xs c1">L</span>Luis</div>
+                <div class="m-label">Miembros — 3</div>
+                <div class="m-mem"><span class="av xs c2">A</span>Ana</div>
+                <div class="m-mem"><span class="av xs c4">M</span>Marta</div>
+                <div class="m-mem"><span class="av xs c6">SG</span>Sofía</div>
+              </div>
+            </div>
+          </div>
+          <div class="card-body">
+            <div class="card-top"><span class="num">0</span><h2>La actual (referencia)</h2></div>
+            <p class="like">Se parece a: Discord</p>
+            <p class="desc">Cuatro columnas fijas: servidores, canales, chat y miembros.</p>
+            <ul class="tradeoffs">
+              <li class="pro">Familiar para quien usa Discord.</li>
+              <li class="con">Mucha estructura para un grupo de amigos; la columna de miembros ocupa lugar todo el tiempo.</li>
+            </ul>
+          </div>
+        </article>
+
+        <!-- 1 · Conversaciones ─────────────────────────────────────────────── -->
+        <article class="card" tabindex="0">
+          <div class="frame">
+            <div class="mock p1">
+              <div class="col m-side">
+                <div class="top">
+                  <span class="av xs c1">L</span>Conversaciones<span class="sp"></span>
+                  <span class="ibtn round"><svg class="i"><use href="#i-plus" /></svg></span>
+                </div>
+                <div class="search"><svg class="i"><use href="#i-search" /></svg>Buscar o pegar una dirección</div>
+                <div class="conv on">
+                  <span class="sq sm round c3">CdL</span>
+                  <div class="conv-text"><b>Casa de Luis · #general</b><span>Ana: ¿se suman a las 10?</span></div>
+                  <div class="conv-meta">22:10<span class="badge">3</span></div>
+                </div>
+                <div class="conv">
+                  <span class="sq sm round c3">CdL</span>
+                  <div class="conv-text"><b>Casa de Luis · charla</b><span class="voice-line">En voz: Luis, Ana</span></div>
+                  <div class="conv-meta"><svg class="i" style="color: var(--success)"><use href="#i-vol" /></svg></div>
+                </div>
+                <div class="conv">
+                  <span class="sq sm round c2">GdM</span>
+                  <div class="conv-text"><b>Gym de Martes · #general</b><span>Vos: mañana a las 8</span></div>
+                  <div class="conv-meta">ayer</div>
+                </div>
+                <div class="conv">
+                  <span class="sq sm round c2">GdM</span>
+                  <div class="conv-text"><b>Gym de Martes · #rutinas</b><span>Marta: subí la nueva</span></div>
+                  <div class="conv-meta">lun<span class="badge">1</span></div>
+                </div>
+                <span class="sp"></span>
+                <div class="conv">
+                  <span class="sq sm" style="background: var(--m-input)"><svg class="i"><use href="#i-server" /></svg></span>
+                  <div class="conv-text"><b>Mi nodo</b><span>2 servidores encendidos</span></div>
+                </div>
+              </div>
+              <div class="col m-main">
+                <div class="m-head">
+                  <span class="sq sm round c3">CdL</span>Casa de Luis · #general <small>4 personas</small><span class="sp"></span>
+                  <span class="ibtn"><svg class="i"><use href="#i-phone" /></svg></span>
+                  <span class="ibtn"><svg class="i"><use href="#i-users" /></svg></span>
+                </div>
+                <div class="msgs">
+                  <div class="msg"><span class="av c1">L</span><div><b>Luis</b><small>21:54</small><p>Buenas! Bienvenidos</p></div></div>
+                  <div class="msg"><span class="av c2">A</span><div><b>Ana</b><small>22:10</small><p>¿Se suman a las 10?</p></div></div>
+                  <div class="msg"><span class="av c4">M</span><div><b>Marta</b><small>22:11</small><p>Yo sí, llevo el parlante</p></div></div>
+                </div>
+                <div class="input">Escribí un mensaje…</div>
+              </div>
+            </div>
+          </div>
+          <div class="card-body">
+            <div class="card-top"><span class="num">1</span><h2>Lista de conversaciones</h2></div>
+            <p class="like">Se parece a: Skype, WhatsApp Desktop, Telegram</p>
+            <p class="desc">
+              Una sola lista a la izquierda: cada canal es una fila con su último mensaje. Los servidores pasan a ser
+              un detalle de cada fila, y la llamada se inicia con el teléfono de arriba.
+            </p>
+            <ul class="tradeoffs">
+              <li class="pro">La más fácil para quien nunca usó Discord; lo nuevo se ve de un vistazo.</li>
+              <li class="con">Con muchos canales la lista crece y se pierde la idea de “lugar”.</li>
+            </ul>
+          </div>
+        </article>
+
+        <!-- 2 · Pestañas ───────────────────────────────────────────────────── -->
+        <article class="card" tabindex="0">
+          <div class="frame">
+            <div class="mock p2">
+              <div class="tabs">
+                <svg class="logo sm"><use href="#i-logo" /></svg>
+                <span class="tab on"><span class="sq sm round c3" style="width: 1.8em; height: 1.8em">C</span>Casa de Luis<span class="x">×</span></span>
+                <span class="tab"><span class="sq sm round c2" style="width: 1.8em; height: 1.8em">G</span>Gym de Martes<span class="x">×</span></span>
+                <span class="tab"><svg class="i"><use href="#i-server" /></svg>Mi nodo</span>
+                <span class="ibtn tab-plus"><svg class="i"><use href="#i-plus" /></svg></span>
+                <span class="ibtn gear"><svg class="i"><use href="#i-gear" /></svg></span>
+              </div>
+              <div class="col m-side">
+                <div class="grow pad">
+                  <div class="m-label">Texto</div>
+                  <div class="m-ch on"><svg class="i"><use href="#i-hash" /></svg>general</div>
+                  <div class="m-ch"><svg class="i"><use href="#i-hash" /></svg>memes</div>
+                  <div class="m-label">Voz</div>
+                  <div class="m-ch"><svg class="i"><use href="#i-vol" /></svg>charla</div>
+                  <div class="m-vu"><span class="av xs c1 talk">L</span>Luis</div>
+                  <div class="m-vu"><span class="av xs c2">A</span>Ana</div>
+                </div>
+                <div class="user"><span class="av xs c1">L</span><div><b>Luis</b><small>@luis</small></div></div>
+              </div>
+              <div class="col m-main">
+                <div class="m-head">
+                  <svg class="i"><use href="#i-hash" /></svg>general<span class="sp"></span>
+                  <span class="stack"><span class="av xs c1">L</span><span class="av xs c2">A</span><span class="av xs c4">M</span><span class="av xs c6">S</span></span>
+                  <small>4</small>
+                </div>
+                <div class="msgs">
+                  <div class="msg"><span class="av c1">L</span><div><b>Luis</b><small>21:54</small><p>Buenas! Bienvenidos</p></div></div>
+                  <div class="msg"><span class="av c2">A</span><div><b>Ana</b><small>22:10</small><p>¿Se suman a las 10?</p></div></div>
+                </div>
+                <div class="input">Escribí en #general</div>
+              </div>
+            </div>
+          </div>
+          <div class="card-body">
+            <div class="card-top"><span class="num">2</span><h2>Pestañas de servidores</h2></div>
+            <p class="like">Se parece a: un navegador (Chrome, Firefox)</p>
+            <p class="desc">
+              Cada servidor abierto es una pestaña arriba, y “Mi nodo” es una pestaña más. Abajo, los canales y el
+              chat. Los miembros se ven como caritas en el encabezado.
+            </p>
+            <ul class="tradeoffs">
+              <li class="pro">Cambiar de servidor es como cambiar de pestaña; libera la columna de la izquierda.</li>
+              <li class="con">Con más de 5 o 6 servidores las pestañas se achican.</li>
+            </ul>
+          </div>
+        </article>
+
+        <!-- 3 · Selector + panel de info ───────────────────────────────────── -->
+        <article class="card" tabindex="0">
+          <div class="frame">
+            <div class="mock p3">
+              <div class="col m-side">
+                <div class="switcher"><span class="sq sm round c3">CdL</span>Casa de Luis<span class="sp"></span><svg class="i"><use href="#i-down" /></svg></div>
+                <div class="grow pad" style="padding-top: 0">
+                  <div class="m-label">Canales</div>
+                  <div class="m-ch on"><svg class="i"><use href="#i-hash" /></svg>general</div>
+                  <div class="m-ch"><svg class="i"><use href="#i-hash" /></svg>memes</div>
+                  <div class="m-ch"><svg class="i"><use href="#i-vol" /></svg>charla</div>
+                  <div class="m-vu"><span class="av xs c1 talk">L</span>Luis</div>
+                </div>
+                <div class="user"><span class="av xs c1">L</span><div><b>Luis</b><small>@luis</small></div></div>
+              </div>
+              <div class="dropdown">
+                <div class="dd-item on"><span class="sq sm round c3">CdL</span>Casa de Luis<span class="sp"></span><span class="dot on"></span></div>
+                <div class="dd-item"><span class="sq sm round c2">GdM</span>Gym de Martes<span class="sp"></span><span class="dot on"></span></div>
+                <div class="dd-sep"></div>
+                <div class="dd-item"><svg class="i"><use href="#i-plus" /></svg>Unirme a un servidor</div>
+                <div class="dd-item"><svg class="i"><use href="#i-server" /></svg>Mi nodo</div>
+              </div>
+              <div class="col m-main">
+                <div class="m-head"><svg class="i"><use href="#i-hash" /></svg>general<span class="sp"></span><svg class="i"><use href="#i-users" /></svg></div>
+                <div class="msgs">
+                  <div class="msg"><span class="av c1">L</span><div><b>Luis</b><small>21:54</small><p>Buenas! Bienvenidos</p></div></div>
+                  <div class="msg"><span class="av c2">A</span><div><b>Ana</b><small>22:10</small><p>¿Se suman a las 10?</p></div></div>
+                </div>
+                <div class="input">Escribí en #general</div>
+              </div>
+              <div class="col m-side">
+                <div class="m-head">Info del canal</div>
+                <div class="info-block"><b>Invitar gente</b><span class="mono">192.168.1.50:7273/casa-de-luis</span></div>
+                <div class="m-label">En línea — 2</div>
+                <div class="m-mem"><span class="av xs c1">L</span>Luis<span class="tag">Dueño</span></div>
+                <div class="m-mem"><span class="av xs c2">A</span>Ana</div>
+                <div class="m-label">Desconectados — 2</div>
+                <div class="m-mem" style="opacity: 0.6"><span class="av xs c4">M</span>Marta</div>
+                <div class="m-mem" style="opacity: 0.6"><span class="av xs c6">S</span>Sofía</div>
+              </div>
+            </div>
+          </div>
+          <div class="card-body">
+            <div class="card-top"><span class="num">3</span><h2>Selector de servidor + panel de info</h2></div>
+            <p class="like">Se parece a: Slack</p>
+            <p class="desc">
+              Sin columna de servidores: se cambia desde un selector arriba de los canales. A la derecha, un panel de
+              información que se abre cuando lo necesitás, con la dirección para invitar y quién está.
+            </p>
+            <ul class="tradeoffs">
+              <li class="pro">Menos columnas fijas; la dirección para invitar siempre a mano.</li>
+              <li class="con">Cambiar de servidor cuesta un clic más.</li>
+            </ul>
+          </div>
+        </article>
+
+        <!-- 4 · Salas ──────────────────────────────────────────────────────── -->
+        <article class="card" tabindex="0">
+          <div class="frame">
+            <div class="mock p4">
+              <div class="bar">
+                <svg class="i"><use href="#i-back" /></svg>
+                <span class="sq sm round c3">CdL</span>Casa de Luis
+                <span class="pill on">Encendido</span>
+                <span class="sp"></span>
+                <span class="btn"><svg class="i"><use href="#i-plus" /></svg>Invitar</span>
+              </div>
+              <div class="rooms">
+                <div class="m-label">Salas</div>
+                <div class="room">
+                  <div class="room-title"><svg class="i"><use href="#i-hash" /></svg>general<span class="sp"></span><span class="badge">3</span></div>
+                  <p><b>Ana:</b> ¿se suman a las 10?</p>
+                  <p><b>Marta:</b> yo sí, llevo el parlante</p>
+                </div>
+                <div class="room voice">
+                  <div class="room-title"><svg class="i" style="color: var(--success)"><use href="#i-vol" /></svg>charla</div>
+                  <div class="stack"><span class="av c1 talk">L</span><span class="av c2">A</span></div>
+                  <span class="sp"></span>
+                  <span><span class="btn">Entrar</span></span>
+                </div>
+                <div class="room">
+                  <div class="room-title"><svg class="i"><use href="#i-hash" /></svg>memes</div>
+                  <p><b>Luis:</b> jajaja</p>
+                  <p>hace 2 horas</p>
+                </div>
+                <div class="room">
+                  <div class="room-title"><svg class="i"><use href="#i-vol" /></svg>juegos</div>
+                  <p>Nadie todavía</p>
+                  <span class="sp"></span>
+                  <span><span class="btn ghost">Entrar</span></span>
+                </div>
+                <div class="room">
+                  <div class="room-title"><svg class="i"><use href="#i-hash" /></svg>anuncios</div>
+                  <p><b>Luis:</b> el viernes apago el server</p>
+                  <p>ayer</p>
+                </div>
+                <div class="room new">+ Nueva sala</div>
+              </div>
+            </div>
+          </div>
+          <div class="card-body">
+            <div class="card-top"><span class="num">4</span><h2>Salas en tarjetas</h2></div>
+            <p class="like">Se parece a: Gather, Clubhouse, un tablero</p>
+            <p class="desc">
+              Al entrar a un servidor ves sus salas como tarjetas: las de texto con lo último que se dijo, las de voz con
+              quién está adentro. Al tocar una, se abre el chat o entrás a la llamada.
+            </p>
+            <ul class="tradeoffs">
+              <li class="pro">Muy visual; la voz se ve tanto como el texto.</li>
+              <li class="con">Para leer o escribir hay que entrar a la sala: un paso más.</li>
+            </ul>
+          </div>
+        </article>
+
+        <!-- 5 · Árbol ──────────────────────────────────────────────────────── -->
+        <article class="card" tabindex="0">
+          <div class="frame">
+            <div class="mock p5">
+              <div class="col m-side">
+                <div class="m-head">Servidores<span class="sp"></span><svg class="i"><use href="#i-plus" /></svg></div>
+                <div class="grow tree">
+                  <div class="node srv"><span class="caret">▾</span><span class="dot on"></span>Casa de Luis</div>
+                  <div class="node l1 on"><svg class="i"><use href="#i-hash" /></svg>general</div>
+                  <div class="node l1"><svg class="i"><use href="#i-hash" /></svg>memes</div>
+                  <div class="node l1"><svg class="i"><use href="#i-vol" /></svg>charla</div>
+                  <div class="node l2"><span class="av xs c1 talk">L</span>Luis</div>
+                  <div class="node l2"><span class="av xs c2">A</span>Ana<svg class="i" style="color: var(--danger)"><use href="#i-micoff" /></svg></div>
+                  <div class="node srv"><span class="caret">▾</span><span class="dot on"></span>Gym de Martes</div>
+                  <div class="node l1"><svg class="i"><use href="#i-hash" /></svg>general</div>
+                  <div class="node l1"><svg class="i"><use href="#i-vol" /></svg>vestuario</div>
+                  <div class="node srv off"><span class="caret">▸</span><span class="dot"></span>Viejo grupo · apagado</div>
+                </div>
+                <div class="voicebar">
+                  <div><b>En voz</b><small>charla / Casa de Luis</small></div>
+                  <span class="sp"></span>
+                  <span class="ibtn"><svg class="i"><use href="#i-mic" /></svg></span>
+                  <span class="ibtn"><svg class="i" style="color: var(--danger)"><use href="#i-phone" /></svg></span>
+                </div>
+              </div>
+              <div class="col m-main">
+                <div class="m-head"><svg class="i"><use href="#i-hash" /></svg>general <small>· Casa de Luis</small></div>
+                <div class="msgs">
+                  <div class="msg"><span class="av c1">L</span><div><b>Luis</b><small>21:54</small><p>Buenas! Bienvenidos</p></div></div>
+                  <div class="msg"><span class="av c2">A</span><div><b>Ana</b><small>22:10</small><p>¿Se suman a las 10?</p></div></div>
+                  <div class="msg"><span class="av c4">M</span><div><b>Marta</b><small>22:11</small><p>Yo sí, llevo el parlante</p></div></div>
+                </div>
+                <div class="input">Escribí en #general</div>
+              </div>
+            </div>
+          </div>
+          <div class="card-body">
+            <div class="card-top"><span class="num">5</span><h2>Árbol de servidores</h2></div>
+            <p class="like">Se parece a: TeamSpeak, Mumble, un explorador de archivos</p>
+            <p class="desc">
+              Un único árbol con todos tus servidores, sus canales y la gente de cada canal de voz. Los apagados
+              quedan en gris y se pliegan.
+            </p>
+            <ul class="tradeoffs">
+              <li class="pro">Todos tus servidores a la vez; muy conocido para quien usó TeamSpeak.</li>
+              <li class="con">Se vuelve largo con muchos servidores; se siente menos moderno.</li>
+            </ul>
+          </div>
+        </article>
+
+        <!-- 6 · Llamada arriba ─────────────────────────────────────────────── -->
+        <article class="card" tabindex="0">
+          <div class="frame">
+            <div class="mock p6">
+              <div class="col m-side">
+                <div class="m-head">Casa de Luis<span class="sp"></span><svg class="i"><use href="#i-down" /></svg></div>
+                <div class="grow pad">
+                  <div class="m-ch"><svg class="i"><use href="#i-hash" /></svg>general</div>
+                  <div class="m-ch"><svg class="i"><use href="#i-hash" /></svg>memes</div>
+                  <div class="m-ch on"><svg class="i" style="color: var(--success)"><use href="#i-vol" /></svg>charla</div>
+                </div>
+                <div class="user"><span class="av xs c1">L</span><div><b>Luis</b><small>@luis</small></div></div>
+              </div>
+              <div class="col m-main">
+                <div class="stage">
+                  <div class="tiles">
+                    <div class="tile"><span class="av lg c1 talk">L</span>Luis</div>
+                    <div class="tile"><span class="av lg c2">A</span>Ana<span class="muted-ic"><svg class="i"><use href="#i-micoff" /></svg></span></div>
+                    <div class="tile"><span class="av lg c4">M</span>Marta</div>
+                    <div class="tile"><span class="av lg c6">S</span>Sofía</div>
+                  </div>
+                  <div class="controls">
+                    <span class="ibtn round"><svg class="i"><use href="#i-mic" /></svg></span>
+                    <span class="ibtn round"><svg class="i"><use href="#i-head" /></svg></span>
+                    <span class="ibtn round red"><svg class="i"><use href="#i-phone" /></svg></span>
+                  </div>
+                </div>
+                <div class="msgs">
+                  <div class="msg"><span class="av c2">A</span><div><b>Ana</b><small>22:14</small><p>No tengo micro, escribo por acá</p></div></div>
+                  <div class="msg"><span class="av c1">L</span><div><b>Luis</b><small>22:14</small><p>Dale, te leemos</p></div></div>
+                </div>
+                <div class="input">Escribí en el chat de charla</div>
+              </div>
+            </div>
+          </div>
+          <div class="card-body">
+            <div class="card-top"><span class="num">6</span><h2>Llamada arriba del chat</h2></div>
+            <p class="like">Se parece a: Skype, Google Meet con chat</p>
+            <p class="desc">
+              Cuando estás en voz, la llamada se acomoda arriba con la inicial de cada persona (y quién habla), y el
+              chat del canal sigue abajo. Los controles quedan siempre a la vista.
+            </p>
+            <ul class="tradeoffs">
+              <li class="pro">Hablar y escribir a la vez, como en Skype; queda clarísimo quién está.</li>
+              <li class="con">Le quita altura al chat mientras dura la llamada.</li>
+            </ul>
+          </div>
+        </article>
+
+        <!-- 7 · Compacta ───────────────────────────────────────────────────── -->
+        <article class="card" tabindex="0">
+          <div class="frame">
+            <div class="mock p7">
+              <div class="phone">
+                <div class="m-head">Chats<span class="sp"></span><svg class="i"><use href="#i-plus" /></svg></div>
+                <div class="grow" style="padding-top: 0.4em">
+                  <div class="conv on" style="margin: 0 0.3em">
+                    <span class="sq sm round c3">CdL</span>
+                    <div class="conv-text"><b>Casa de Luis</b><span>Ana: ¿se suman a las 10?</span></div>
+                    <div class="conv-meta"><span class="badge">3</span></div>
+                  </div>
+                  <div class="conv" style="margin: 0 0.3em">
+                    <span class="sq sm round c2">GdM</span>
+                    <div class="conv-text"><b>Gym de Martes</b><span>Vos: mañana a las 8</span></div>
+                  </div>
+                  <div class="conv" style="margin: 0 0.3em">
+                    <span class="sq sm round c5">VG</span>
+                    <div class="conv-text"><b>Viejo grupo</b><span>Apagado</span></div>
+                  </div>
+                </div>
+                <div class="tabbar">
+                  <span class="on"><svg class="i"><use href="#i-chat" /></svg>Chats</span>
+                  <span><svg class="i"><use href="#i-vol" /></svg>Voz</span>
+                  <span><svg class="i"><use href="#i-server" /></svg>Mi nodo</span>
+                </div>
+              </div>
+              <span class="arrow">→</span>
+              <div class="phone">
+                <div class="m-head"><svg class="i"><use href="#i-back" /></svg>#general<span class="sp"></span><svg class="i"><use href="#i-phone" /></svg></div>
+                <div class="msgs">
+                  <div class="msg"><span class="av xs c1">L</span><div><b>Luis</b><p>Buenas!</p></div></div>
+                  <div class="msg"><span class="av xs c2">A</span><div><b>Ana</b><p>¿Se suman a las 10?</p></div></div>
+                </div>
+                <div class="input">Mensaje…</div>
+              </div>
+              <span></span>
+            </div>
+          </div>
+          <div class="card-body">
+            <div class="card-top"><span class="num">7</span><h2>Compacta, de a una pantalla</h2></div>
+            <p class="like">Se parece a: WhatsApp, apps de celular</p>
+            <p class="desc">
+              Una sola columna angosta que avanza por pantallas: de la lista al chat y vuelta. Abajo, tres pestañas:
+              Chats, Voz y Mi nodo.
+            </p>
+            <ul class="tradeoffs">
+              <li class="pro">Entra en una ventana chica al costado y deja lista la versión de celular.</li>
+              <li class="con">En una pantalla grande desaprovecha espacio.</li>
+            </ul>
+          </div>
+        </article>
+
+        <!-- 8 · Panel del dueño ────────────────────────────────────────────── -->
+        <article class="card" tabindex="0">
+          <div class="frame">
+            <div class="mock p8">
+              <div class="nav">
+                <span class="brand"><svg class="logo sm"><use href="#i-logo" /></svg>Recop</span>
+                <a class="on">Mi nodo</a>
+                <a>Conversaciones</a>
+                <span class="sp"></span>
+                <span class="btn"><svg class="i"><use href="#i-plus" /></svg>Crear servidor</span>
+              </div>
+              <div class="dash">
+                <div class="stats">
+                  <div class="stat"><b>2 de 3</b><span>servidores encendidos</span></div>
+                  <div class="stat"><b>7</b><span>personas conectadas</span></div>
+                  <div class="stat"><b>1</b><span>llamada en curso</span></div>
+                </div>
+                <div class="srv-cards">
+                  <div class="srv-card">
+                    <div class="srv-card-top"><span class="sq round c3">CdL</span><div><b>Casa de Luis</b><span class="pill on">Encendido</span></div></div>
+                    <span class="mono">192.168.1.50:7273/casa-de-luis</span>
+                    <p>5 en línea · 2 en charla</p>
+                    <div class="row"><span class="btn">Abrir</span><span class="btn ghost"><svg class="i"><use href="#i-copy" /></svg>Copiar</span></div>
+                  </div>
+                  <div class="srv-card">
+                    <div class="srv-card-top"><span class="sq round c2">GdM</span><div><b>Gym de Martes</b><span class="pill on">Encendido</span></div></div>
+                    <span class="mono">192.168.1.50:7274/gym-de-martes</span>
+                    <p>2 en línea · nadie en voz</p>
+                    <div class="row"><span class="btn">Abrir</span><span class="btn ghost"><svg class="i"><use href="#i-copy" /></svg>Copiar</span></div>
+                  </div>
+                  <div class="srv-card off">
+                    <div class="srv-card-top"><span class="sq round c5">VG</span><div><b>Viejo grupo</b><span class="pill">Apagado</span></div></div>
+                    <span class="mono">192.168.1.50:7275/viejo-grupo</span>
+                    <p>Los datos siguen guardados</p>
+                    <div class="row"><span class="btn"><svg class="i"><use href="#i-power" /></svg>Encender</span></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="card-body">
+            <div class="card-top"><span class="num">8</span><h2>Panel del dueño</h2></div>
+            <p class="like">Se parece a: Docker Desktop, un panel de control</p>
+            <p class="desc">
+              Para quien hospeda: el inicio es un tablero con tus servidores, si están encendidos, cuánta gente hay y la
+              dirección para compartir. El chat vive en la pestaña “Conversaciones”.
+            </p>
+            <ul class="tradeoffs">
+              <li class="pro">Deja claro lo que hace distinto a Recop: el servidor vive en tu compu.</li>
+              <li class="con">A quien solo se une a servidores ajenos le sobra; se combina con otra propuesta para el chat.</li>
+            </ul>
+          </div>
+        </article>
+      </main>
+
+      <p class="foot">
+        Todas usan la misma paleta que la app: grises neutros y el rosa del logo como único acento, en claro y oscuro.
+        Las propuestas se pueden mezclar: por ejemplo, la lista de la 1 con la llamada de la 6, o el panel de la 8
+        como inicio de cualquiera.
+      </p>
+    </div>
+
+    <dialog id="zoom" aria-labelledby="zoom-title">
+      <div class="zoom-head">
+        <h2 id="zoom-title"></h2>
+        <button type="button" id="zoom-close">Cerrar</button>
+      </div>
+      <div class="frame" id="zoom-frame"></div>
+      <p id="zoom-desc"></p>
+    </dialog>
+
+    <script>
+      // Ver una propuesta en grande: se copia su boceto al diálogo. Como el
+      // boceto escala con el ancho de su contenedor, se ve igual pero más grande.
+      const zoom = document.getElementById('zoom');
+      const zoomFrame = document.getElementById('zoom-frame');
+
+      function open(card) {
+        zoomFrame.replaceChildren(card.querySelector('.mock').cloneNode(true));
+        const num = card.querySelector('.num').textContent;
+        document.getElementById('zoom-title').textContent = `${num} · ${card.querySelector('h2').textContent}`;
+        document.getElementById('zoom-desc').textContent = card.querySelector('.desc').textContent.trim();
+        zoom.showModal();
+      }
+
+      for (const card of document.querySelectorAll('.card')) {
+        card.addEventListener('click', () => open(card));
+        card.addEventListener('keydown', (event) => {
+          if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            open(card);
+          }
+        });
+      }
+
+      document.getElementById('zoom-close').addEventListener('click', () => zoom.close());
+      zoom.addEventListener('click', (event) => {
+        if (event.target === zoom) zoom.close();
+      });
+
+      // Tema: sistema → claro → oscuro.
+      const THEMES = ['system', 'light', 'dark'];
+      const LABELS = { system: 'Tema: sistema', light: 'Tema: claro', dark: 'Tema: oscuro' };
+      const themeBtn = document.getElementById('theme-btn');
+
+      function applyTheme(theme) {
+        if (theme === 'system') delete document.documentElement.dataset.theme;
+        else document.documentElement.dataset.theme = theme;
+        themeBtn.textContent = LABELS[theme];
+      }
+
+      let theme = 'system';
+      try {
+        theme = localStorage.getItem('recop.propuestas.theme') || 'system';
+      } catch {}
+      applyTheme(theme);
+
+      themeBtn.addEventListener('click', () => {
+        theme = THEMES[(THEMES.indexOf(theme) + 1) % THEMES.length];
+        applyTheme(theme);
+        try {
+          localStorage.setItem('recop.propuestas.theme', theme);
+        } catch {}
+      });
+    </script>
+  </body>
+</html>
