@@ -1,40 +1,6 @@
-"""Supervisor de grupos: un proceso por grupo.
+"""One process per group for fault isolation.
 
-## La forma
-
-```
-  dueño corre:  recap-node                        ← proceso del nodo, puerto 7272
-                  │
-                  ├── recap-group --server-id=A --port=7273
-                  ├── recap-group --server-id=B --port=7274
-                  └── recap-group --server-id=C --port=7275
-```
-
-El proceso del nodo es el plano de control: el dueño lo abre, ve sus grupos,
-crea y apaga. Cada grupo corre en un proceso aparte, con su puerto, y ahí pasan
-las cosas.
-
-## Por qué procesos y no un solo proceso con N grupos
-
-Un grupo que se cuelga —un mensaje malformado, una fuga de memoria, un
-deadlock— se lleva por delante el proceso. Con un proceso solo, eso tumba todos
-los grupos del dueño. Con un proceso por grupo, solo cae ese grupo, y el dueño
-lo vuelve a levantar sin perder los otros.
-
-Es el mismo criterio por el que una base de datos no corre todas las tablas en
-un proceso: el aislamiento se paga con complejidad, y acá el aislamiento vale
-porque los datos de una persona están en su máquina y no puede pedirle a nadie
-que los reinicie.
-
-## Cómo muere un grupo huérfano
-
-Cuando el proceso del nodo muere, sus hijos quedan huérfanos en Unix: siguen
-corriendo sin nadie que los supervise.
-
-La solución acá es `stdin`: el nodo no le pasa la terminal al hijo, sino la
-extremo de escritura de un pipe. Cuando el nodo muere, el pipe se cierra, el hijo
-lee EOF en stdin y se apaga solo. No hay archivos de pid, ni señales cruzadas,
-ni basura acumulada si el nodo muere de forma abrupta.
+Children get a pipe as stdin; node death closes it so orphans read EOF and exit.
 """
 
 from __future__ import annotations
@@ -54,20 +20,16 @@ from apps.common.types import RecordId
 
 logger = logging.getLogger(__name__)
 
-#: Cuánto se le da a un grupo para apagarse antes de matarlo a la fuerza.
-#:
-#: El proceso recibe SIGTERM, Uvicorn cierra las conexiones WebSocket y sale
-#: limpio. Si en ese tiempo no terminó, se le manda SIGKILL: es preferible
-#: un grupo muerto a un proceso zombi ocupando un puerto.
+#: Grace period for SIGTERM before SIGKILL; avoids zombie port-holders.
 GRACEFUL_SHUTDOWN_SECONDS = 10.0
 
-#: Cada cuánto se mira si algún proceso se murió sin que nos enteremos.
+#: Reap check interval for silently died children.
 SUPERVISE_INTERVAL_SECONDS = 2.0
 
 
 @dataclass(slots=True)
 class GroupProcess:
-    """Un proceso de grupo y todo lo que hay que saber de él."""
+    """A group child process and its metadata."""
 
     server_id: RecordId
     port: int
@@ -80,7 +42,7 @@ class GroupProcess:
 
     @property
     def returncode(self) -> int | None:
-        """Código de salida, o `None` si sigue vivo."""
+        """Exit code, or None while alive."""
         return self.process.returncode
 
     @property
@@ -93,7 +55,7 @@ class GroupProcess:
 
 
 class GroupSupervisor:
-    """Levanta, baja y vigila los procesos de los grupos de este nodo."""
+    """Spawns, stops, and watches this node's group processes."""
 
     def __init__(self, *, db_url: str, host: str = "0.0.0.0") -> None:  # noqa: S104
         self._db_url = db_url
@@ -102,10 +64,10 @@ class GroupSupervisor:
         self._shutdown = asyncio.Event()
         self._supervisor_task: asyncio.Task[None] | None = None
 
-    # ─── Ciclo de vida ─────────────────────────────────────────────────────────
+    # ─── Lifecycle ─────────────────────────────────────────────────────────
 
     async def start(self) -> None:
-        """Empieza a vigilar los procesos. Idempotente."""
+        """Start watching; idempotent."""
         if self._supervisor_task is not None and not self._supervisor_task.done():
             return
 
@@ -114,12 +76,7 @@ class GroupSupervisor:
         logger.info("supervisor de grupos iniciado")
 
     async def stop(self) -> None:
-        """Apaga todos los grupos y deja de vigilar.
-
-        Se llama en el shutdown del nodo. Los grupos quedan marcados como
-        inactivos en la base por el reconciliador, igual que si el nodo se
-        hubiera caído.
-        """
+        """Stop watching and terminate all groups; reconciler marks them inactive."""
         self._shutdown.set()
 
         if self._supervisor_task is not None:
@@ -132,15 +89,10 @@ class GroupSupervisor:
         self._groups.clear()
         logger.info("supervisor de grupos detenido")
 
-    # ─── Operar grupos ─────────────────────────────────────────────────────────
+    # ─── Group ops ─────────────────────────────────────────────────────────
 
     async def spawn(self, server_id: RecordId, port: int) -> GroupProcess:
-        """Levanta el proceso de un grupo.
-
-        Si el grupo ya tiene un proceso vivo, lo devuelve tal cual: pedir que
-        levante un grupo que ya está arriba es un no-op, no un error. Es lo que
-        espera la gente cuando aprieta un botón.
-        """
+        """Spawn a group process; returns the live one if already running."""
         existing = self._groups.get(server_id)
         if existing is not None and existing.is_running:
             logger.info("el grupo %s ya tiene un proceso vivo (pid %s)", server_id, existing.pid)
@@ -154,7 +106,7 @@ class GroupSupervisor:
             f"--server-id={server_id}",
             f"--port={port}",
             f"--host={self._host}",
-            # El pipe de guardia: si el nodo muere, el hijo lee EOF y se apaga.
+            # Guard pipe: node death delivers EOF so the child exits.
             stdin=asyncio.subprocess.PIPE,
             env=self._child_env(),
             cwd=os.getcwd(),
@@ -167,7 +119,7 @@ class GroupSupervisor:
         return group
 
     async def terminate(self, server_id: RecordId) -> bool:
-        """Apaga el proceso de un grupo. Devuelve si había algo que apagar."""
+        """Terminate a group process; True when one existed."""
         group = self._groups.get(server_id)
         if group is None:
             return False
@@ -177,16 +129,12 @@ class GroupSupervisor:
         return True
 
     async def restart(self, server_id: RecordId, port: int) -> GroupProcess:
-        """Reaparece un grupo en un puerto (posiblemente nuevo)."""
+        """Restart a group on the given (possibly new) port."""
         await self.terminate(server_id)
         return await self.spawn(server_id, port)
 
     async def wait_ready(self, server_id: RecordId, timeout_seconds: float = 10.0) -> bool:
-        """Espera a que el grupo responda su propio `/health`.
-
-        Devolver apenas el proceso arrancó no sirve: el dueño comparte el puerto
-        con alguien y este todavía no escucha. Se espera a que esté de verdad.
-        """
+        """Wait until the group answers its own /health."""
         group = self._groups.get(server_id)
         if group is None:
             return False
@@ -209,7 +157,7 @@ class GroupSupervisor:
         logger.warning("el grupo %s no respondió en %ss", server_id, timeout_seconds)
         return False
 
-    # ─── Estado ────────────────────────────────────────────────────────────────
+    # ─── State ────────────────────────────────────────────────────────────────
 
     def is_running(self, server_id: RecordId) -> bool:
         group = self._groups.get(server_id)
@@ -220,32 +168,28 @@ class GroupSupervisor:
 
     @property
     def running_ids(self) -> frozenset[RecordId]:
-        """Ids de los grupos con proceso vivo."""
+        """Ids of groups with a live process."""
         return frozenset(sid for sid, g in self._groups.items() if g.is_running)
 
     def used_ports(self) -> set[int]:
-        """Puertos que este nodo tiene ocupados con grupos."""
+        """Ports this node holds for groups."""
         return {g.port for g in self._groups.values()}
 
     @property
     def count(self) -> int:
         return len(self._groups)
 
-    # ─── Interno ───────────────────────────────────────────────────────────────
+    # ─── Internals ───────────────────────────────────────────────────────────────
 
     def _child_env(self) -> dict[str, str]:
-        """Entorno del proceso hijo.
-
-        Se heredan las variables del padre (`.env` ya se resolvió) y se agrega
-        una marca para que el hijo sepa que es un grupo y no el nodo.
-        """
+        """Child env: inherit parent plus group role marker."""
         env = dict(os.environ)
         env["RECOP_ROLE"] = "group"
         env["PYTHONUNBUFFERED"] = "1"
         return env
 
     async def _terminate(self, group: GroupProcess) -> None:
-        """Apaga un proceso de grupo: SIGTERM, esperar, SIGKILL."""
+        """SIGTERM, wait, then SIGKILL."""
         if not group.is_running:
             return
 
@@ -267,12 +211,7 @@ class GroupSupervisor:
                 await group.process.wait()
 
     async def _supervise_loop(self) -> None:
-        """Mira periódicamente que los grupos sigan vivos.
-
-        Un grupo que se muere solo tiene que quedar marcado como inactivo: la
-        base se entera por el reconciliador, y el dueño lo ve apagado sin que
-        nadie tenga que hacerlo a mano.
-        """
+        """Reap dead groups; they stay inactive until re-enabled."""
         while not self._shutdown.is_set():
             with contextlib.suppress(TimeoutError):
                 await asyncio.wait_for(self._shutdown.wait(), timeout=SUPERVISE_INTERVAL_SECONDS)
@@ -291,11 +230,7 @@ class GroupSupervisor:
 
     @staticmethod
     async def _probe(url: str) -> bool:
-        """Si una URL responde. Sin dependencias: urllib y asyncio.
-
-        `urlopen` es bloqueante, así que va en un hilo. Con un timeout corto
-        porque es un health check en loop, no una request de negocio.
-        """
+        """Blocking urlopen in a thread with short timeout; no extra deps."""
         import urllib.error
         import urllib.request
 
@@ -313,30 +248,20 @@ class GroupSupervisor:
 
 
 async def install_signal_handlers(on_shutdown: Callable[[], Any]) -> None:
-    """SIGTERM y SIGINT llaman `on_shutdown`.
-
-    Sin esto, `docker stop` mata el proceso sin avisarle a los grupos hijos, y
-    quedan zombis ocupando puertos.
-
-    `add_signal_handler` solo acepta funciones síncronas: si se le pasa la
-    corrutina directamente, el proceso muere al arrancar con
-    `TypeError: coroutines cannot be used with add_signal_handler()`. Por eso
-    se envuelve en `create_task`.
-    """
+    """Route SIGTERM/SIGINT to on_shutdown."""
     loop = asyncio.get_running_loop()
 
     def _fire() -> None:
+        # add_signal_handler needs sync funcs; wrap the coroutine in a task.
         task = loop.create_task(on_shutdown())
-        # Se guarda la referencia para que el garbage collector no la mate a
-        # mitad de camino.
+        # Keep a ref so GC never drops a pending shutdown.
         _PENDING_SHUTDOWNS.add(task)
         task.add_done_callback(_PENDING_SHUTDOWNS.discard)
 
     for sig in (signal.SIGTERM, signal.SIGINT):
-        with contextlib.suppress(NotImplementedError):  # no existe en Windows
+        with contextlib.suppress(NotImplementedError):  # Unavailable on Windows.
             loop.add_signal_handler(sig, _fire)
 
 
-#: Tasks de apagado en vuelo. Sin esto, Python puede recolectar una task que
-#: todavía no arrancó y el apagado se pierde a mitad de camino.
+#: In-flight shutdown tasks; prevents GC from dropping them early.
 _PENDING_SHUTDOWNS: set[asyncio.Task[None]] = set()

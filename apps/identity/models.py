@@ -1,11 +1,4 @@
-"""Modelos de identidad: miembros y tokens.
-
-Dos entidades:
-
-- `Member`: una persona dentro de un servidor. Su identidad es su nickname, y el
-  nickname solo es único **dentro de ese servidor**.
-- `MemberToken`: el token de sesión de esa persona en ese servidor.
-"""
+"""Identity models: per-server members and session tokens."""
 
 from __future__ import annotations
 
@@ -32,11 +25,7 @@ if TYPE_CHECKING:
 
 
 class Member(Base):
-    """Una persona dentro de un servidor.
-
-    La identidad es `(server_id, nickname)`. No hay una tabla de personas: el
-    mismo nickname en dos servidores son dos filas y dos personas distintas.
-    """
+    """A person within a server; identity is (server_id, nickname)."""
 
     __tablename__ = "members"
 
@@ -49,27 +38,19 @@ class Member(Base):
     )
 
     nickname: Mapped[str] = mapped_column(String(32), nullable=False)
-    """Identidad de la persona dentro de este servidor. Canónica, en minúscula."""
+    """Canonical lowercase identity within this server."""
 
     display_name: Mapped[str] = mapped_column(String(64), nullable=False)
-    """Nombre visible, con la capitalización que quiera la persona.
-
-    Es lo que ve el resto del servidor en el chat. El `nickname` es la clave, el
-    `display_name` es la etiqueta.
-    """
+    """User-chosen visible name; nickname is the key."""
 
     role: Mapped[int] = mapped_column(SmallInteger, nullable=False, default=Role.MEMBER)
-    """Rol dentro del servidor. Ver `apps.identity.roles`."""
+    """Server role; see apps.identity.roles."""
 
     is_online: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
-    """Si tiene una conexión abierta ahora mismo.
-
-    Presencia real, no "última vez visto": se pone en `True` al conectarse por
-    WebSocket y en `False` al desconectarse.
-    """
+    """True while a WebSocket connection is open."""
 
     last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    """Cuándo se vio por última vez. Se actualiza al reconectar."""
+    """Last reconnect time."""
 
     server: Mapped[Server] = relationship(back_populates="members")
     tokens: Mapped[list[MemberToken]] = relationship(
@@ -83,25 +64,12 @@ class Member(Base):
 
     @property
     def role_enum(self) -> Role:
-        """El rol como enum, no como entero.
-
-        Los enteros van a la base porque comparar es comparar enteros; el código
-        usa el enum porque `role.can_administer` se lee mejor que `role >= 50`.
-        """
+        """Role as enum instead of stored int."""
         return Role(self.role)
 
 
 class MemberToken(Base):
-    """Un token de sesión, scopeado a un miembro.
-
-    Es un valor opaco, no un JWT. La razón es la revocación: el dueño puede
-    echar a alguien, y con un token firmado eso es imposible sin mantener una
-    lista de revocados, que termina siendo la lista de todos los tokens emitidos
-    menos los válidos. Con el hash guardado, revocar es borrar la fila.
-
-    Se guarda el **hash**, nunca el token. Si alguien lee la base, no puede
-    iniciar sesión con los tokens de otros.
-    """
+    """Opaque session token (not JWT) for cheap revocation. Only the hash is stored."""
 
     __tablename__ = "member_tokens"
 
@@ -118,26 +86,25 @@ class MemberToken(Base):
         nullable=False,
         index=True,
     )
-    """Desnormalizado a propósito: autenticar tiene que poder filtrar por
-    servidor sin un join, que es la operación más caliente de todas."""
+    """Denormalized to authenticate without a join."""
 
     token_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
-    """SHA-256 en hexadecimal del token. Nunca el token en sí."""
+    """Hex SHA-256 of token; never the raw token."""
 
     expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    """Vencimiento. `None` significa que no vence: el dueño lo revoca cuando quiere."""
+    """Expiry; None means non-expiring until revoked."""
 
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    """Cuándo se revocó. No se borra la fila: queda el rastro."""
+    """Revocation time; row kept for audit."""
 
     last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    """Última vez que se usó para autenticar una petición."""
+    """Last authentication use."""
 
     member: Mapped[Member] = relationship(back_populates="tokens")
 
     @property
     def is_usable(self) -> bool:
-        """Si el token sirve para autenticar ahora."""
+        """Whether the token authenticates now."""
         if self.revoked_at is not None:
             return False
         if self.expires_at is None:

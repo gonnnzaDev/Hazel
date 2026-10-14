@@ -1,25 +1,6 @@
-"""Entrada de línea de comandos de Recop.
+"""CLI entry: node control plane and single-group processes.
 
-Hay dos roles, y por eso hay dos comandos:
-
-    python -m core                  el NODO: el plano de control que corre el dueño
-    python -m core group --port=…   un GRUPO: el proceso que sirve un grupo
-
-## Por qué dos comandos y no dos binarios
-
-El nodo lanza los grupos con `python -m core group`, en el mismo intérprete y
-con el mismo entorno virtual. Dos binarios separados obligarían a instalar dos
-veces y a que las versiones puedan desfasarse sin que nadie lo note.
-
-## La guardia del stdin
-
-El nodo le pasa a cada grupo la escritura de un pipe como `stdin`. Cuando el
-nodo muere, el pipe se cierra y el grupo lee EOF: se apaga solo.
-
-Es lo que evita que queden procesos zombis ocupando puertos. Un archivo de pid o
-`PR_SET_PDEATHSIG` también sirven, pero el pipe funciona igual en las cuatro
-plataformas sin código condicional, y es el único que sobrevive a que el nodo
-muera de forma abrupta.
+Groups spawn via `python -m core group` in the same interpreter; stdin pipe EOF reaps orphans.
 """
 
 from __future__ import annotations
@@ -33,11 +14,7 @@ from core.config import Settings, get_settings
 
 
 def _setup_logging(settings: Settings, role: str) -> None:
-    """Logging a stderr, con un formato que se pueda greppear.
-
-    Los grupos escriben en el mismo log que el nodo, así que el prefijo dice de
-    quién es cada línea.
-    """
+    """Stderr logging; role prefix distinguishes node/group lines."""
     logging.basicConfig(
         level=logging.DEBUG if settings.debug else logging.INFO,
         format=f"%(asctime)s {role:<5} %(levelname)-7s %(name)s: %(message)s",
@@ -85,7 +62,7 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def _run_node(settings: Settings, args: argparse.Namespace) -> int:
-    """El proceso del nodo: el plano de control."""
+    """Node control-plane process."""
     _setup_logging(settings, "node")
 
     from core.app import create_node_app
@@ -96,7 +73,7 @@ def _run_node(settings: Settings, args: argparse.Namespace) -> int:
 
 
 def _run_group(settings: Settings, args: argparse.Namespace) -> int:
-    """Un proceso de grupo: sirve un solo grupo en su propio puerto."""
+    """Single-group process on its own port."""
     _setup_logging(settings, "group")
 
     host = getattr(args, "group_host", None) or settings.host
@@ -113,7 +90,7 @@ def _run_group(settings: Settings, args: argparse.Namespace) -> int:
 
 
 def run() -> None:
-    """Entrypoint declarado en `pyproject.toml`."""
+    """Pyproject entrypoint."""
     raise SystemExit(main())
 
 

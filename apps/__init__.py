@@ -1,11 +1,11 @@
-"""Apps de Recop.
+"""Recop apps.
 
-Cada subpaquete es autocontenido y sigue el mismo layout:
+Each subpackage is self-contained with the same layout:
 
-    models.py    → capa Model   (SQLAlchemy async)
-    schemas.py   → capa Schema  (contratos Pydantic de entrada/salida)
-    services.py  → capa Service (lógica de negocio, sin conocimiento de HTTP)
-    api/         → capa View    (bindings HTTP, delega en services)
+    models.py    → Model layer   (async SQLAlchemy)
+    schemas.py   → Schema layer  (Pydantic in/out contracts)
+    services.py  → Service layer (business logic, no HTTP knowledge)
+    api/         → View layer    (HTTP bindings, delegate to services)
 
-Las apps se registran explícitamente en `core/registry.py`.
+Apps register explicitly in `core/registry.py`.
 """

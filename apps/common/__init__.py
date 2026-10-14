@@ -1,1 +1,1 @@
-"""Piezas compartidas entre todas las apps: tipos, mixins y utilidades."""
+"""Shared pieces: types, mixins, utilities."""

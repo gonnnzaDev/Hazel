@@ -1,1 +1,1 @@
-"""Capa API de `servers`."""
+"""`servers` API layer."""

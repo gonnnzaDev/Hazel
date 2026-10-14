@@ -1,4 +1,4 @@
-"""servers y canales
+"""Servers and channels
 
 Revision ID: 2a4847c73fa2
 Revises:
@@ -99,8 +99,7 @@ def downgrade() -> None:
     op.drop_index(op.f("ix_servers_slug"), table_name="servers")
     op.drop_table("servers")
 
-    # Alembic no borra los tipos ENUM nativos de PostgreSQL al dropear la tabla.
-    # Sin esto, un `upgrade` siguiente falla con "el tipo ya existe".
+    # Drop PG ENUM types explicitly; Alembic leaves them behind on table drop.
     sa.Enum("text", "voice", name="channel_kind").drop(op.get_bind(), checkfirst=True)
     sa.Enum("creating", "active", "inactive", "deleted", name="server_status").drop(
         op.get_bind(), checkfirst=True

@@ -1,1 +1,1 @@
-"""Capa API del nodo."""
+"""Node API layer."""

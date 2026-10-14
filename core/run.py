@@ -1,23 +1,6 @@
-"""Arranque de los dos roles: el nodo del dueño y los procesos de grupo.
+"""Node and single-group process startup.
 
-    python -m core node    --port 7272        # el plano de control del dueño
-    python -m core group   --server-id=... --port 7273   # un grupo (lo lanza el nodo)
-
-- `run_node`: monta la app del nodo, le cuelga el supervisor y escucha. Desde
-  acá el dueño crea, enciende y apaga grupos. Cada grupo que se enciende corre
-  en su **propio proceso**, en su **propio puerto**, y sirve su chat y sus
-  llamadas.
-- `run_group`: sirve **un solo grupo** en su puerto. Es lo que el supervisor
-  lanza con `python -m core group ...`.
-
-Todo el signaling de llamadas (WebRTC) viaja por estas mismas apps: en el nodo
-para el modo de un solo proceso, y en el proceso de cada grupo en producción. No
-hay un servidor de medios aparte: los pares se conectan directo y el servidor
-solo los presenta. Ver `apps/servers/calls.py`.
-
-Nada de esto depende de servicios externos. No hay LiveKit, ni Kafka obligatorio,
-ni señalizador de terceros: es WebRTC estándar del lado del cliente y lógica
-propia del lado del servidor.
+Call signaling rides on the same apps; no external media or signaling services.
 """
 
 from __future__ import annotations
@@ -33,12 +16,7 @@ logger = logging.getLogger(__name__)
 
 
 def run_node(*, host: str, port: int) -> None:
-    """Levanta el proceso del nodo con su supervisor de grupos.
-
-    El supervisor vive en `app.state` porque es estado del proceso, no de una
-    request. Lo crea y lo cuelga acá, antes de servir: así los endpoints del
-    nodo (`apps.node.services`) lo encuentran y pueden desplegar grupos.
-    """
+    """Start the node process with its group supervisor in app.state."""
     from core.app import create_node_app
     from core.supervisor import GroupSupervisor
 
@@ -49,19 +27,12 @@ def run_node(*, host: str, port: int) -> None:
     app.state.supervisor = supervisor
 
     logger.info("nodo Recop escuchando en %s:%s", host, port)
-    # Se pasa el objeto app, no el string "core.app:app": necesitamos esta
-    # instancia concreta, la que tiene el supervisor colgado.
+    # Pass the app object, not the import string: this instance carries the supervisor.
     uvicorn.run(app, host=host, port=port, log_level="info")
 
 
 def run_group(*, server_id: str, host: str, port: int) -> None:
-    """Levanta el proceso de un grupo en su puerto.
-
-    Lo lanza el supervisor del nodo. Sirve un único grupo: su API, su chat y sus
-    llamadas. No tiene supervisor (un grupo no maneja otros grupos), y por eso
-    `apps.node.services.supervisor_from` falla con un mensaje claro si alguien
-    intenta desplegar desde acá.
-    """
+    """Start a single-group process; it carries no supervisor."""
     from core.app import create_group_app
 
     settings = get_settings()
@@ -72,7 +43,7 @@ def run_group(*, server_id: str, host: str, port: int) -> None:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    """El parser con los dos subcomandos: `node` (default) y `group`."""
+    """Parser with `node` (default) and `group` subcommands."""
     parser = argparse.ArgumentParser(prog="recop", description="Chat autoservido Recop")
     sub = parser.add_subparsers(dest="role")
 
@@ -89,11 +60,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> None:
-    """Punto de entrada de `python -m core`.
-
-    Sin subcomando arranca el nodo: es lo que quiere la mayoría al escribir
-    `python -m core`. Con `group`, sirve un proceso de grupo.
-    """
+    """python -m core entrypoint; no subcommand starts the node."""
     parser = build_parser()
     args = parser.parse_args(argv)
     settings = get_settings()

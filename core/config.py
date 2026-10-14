@@ -1,8 +1,6 @@
-"""Configuración de la aplicación, cargada desde el entorno.
+"""Environment-loaded app config.
 
-Se usa `pydantic-settings` para que toda la configuración quede validada al
-arrancar: si falta una variable requerida o tiene un tipo inválido, el proceso
-falla rápido en vez de fallar en runtime.
+Validated at startup via pydantic-settings; fails fast on missing/invalid values.
 """
 
 from __future__ import annotations
@@ -18,17 +16,15 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 
 Environment = Literal["local", "test", "prod"]
 
-# Direcciones comodín: el proceso escucha en todas las interfaces.
+# Wildcard binds: listen on all interfaces.
 WILDCARD_HOSTS = frozenset({"0.0.0.0", "::", "[::]"})  # noqa: S104
 
-# Las listas llegan desde el entorno como CSV (`a,b,c`). `NoDecode` le dice a
-# pydantic-settings que no intente interpretarlas como JSON, para que el
-# validador de abajo haga el split.
+# Env lists arrive as CSV; NoDecode leaves splitting to the validator below.
 CsvList = Annotated[list[str], NoDecode]
 
 
 class Settings(BaseSettings):
-    """Configuración global del nodo Recop."""
+    """Global Recop node config."""
 
     model_config = SettingsConfigDict(
         env_file=REPO_ROOT / ".env",
@@ -37,13 +33,13 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    # ─── Aplicación ────────────────────────────────────────────────────────────
+    # ─── App ───────────────────────────────────────────────────────────────────
     env: Environment = "local"
     debug: bool = False
     secret_key: str = Field(min_length=1)
 
-    # ─── Servidor HTTP ─────────────────────────────────────────────────────────
-    host: str = "0.0.0.0"  # noqa: S104 — por defecto debe escuchar en todas las interfaces
+    # ─── HTTP server ───────────────────────────────────────────────────────────
+    host: str = "0.0.0.0"  # noqa: S104 — must listen on all interfaces by default
     port: int = Field(default=7272, ge=1, le=65535)
     group_port_end: int = Field(
         default=7400,
@@ -58,7 +54,7 @@ class Settings(BaseSettings):
     root_path: str = ""
     cors_origins: CsvList = Field(default_factory=lambda: ["*"])
 
-    # ─── Base de datos ─────────────────────────────────────────────────────────
+    # ─── Database ──────────────────────────────────────────────────────────────
     database_url: str = "postgresql+asyncpg://recop:recop@localhost:5432/recop"
     db_pool_size: int = Field(default=10, ge=1)
     db_max_overflow: int = Field(default=20, ge=0)
@@ -70,11 +66,11 @@ class Settings(BaseSettings):
     kafka_client_id: str = ""
     kafka_max_poll_records: int = Field(default=500, ge=1)
 
-    # ─── Límites de la aplicación ──────────────────────────────────────────────
+    # ─── App limits ────────────────────────────────────────────────────────────
     rate_limit_messages_per_minute: int = Field(default=20, ge=1)
     max_message_bytes: int = Field(default=4000, ge=1)
 
-    # ─── Llamadas (señalización WebRTC) ────────────────────────────────────────
+    # ─── Calls (WebRTC signaling) ──────────────────────────────────────────────
     call_max_participants: int = Field(
         default=16,
         ge=2,
@@ -95,12 +91,12 @@ class Settings(BaseSettings):
         ),
     )
 
-    # ─── Derivados ─────────────────────────────────────────────────────────────
+    # ─── Derived ───────────────────────────────────────────────────────────────
 
     @field_validator("cors_origins", "kafka_bootstrap_servers", "call_ice_servers", mode="before")
     @classmethod
     def _split_csv(cls, value: object) -> object:
-        """Acepta `a,b,c` desde el entorno y lo convierte a lista."""
+        """Split `a,b,c` env values into a list."""
         if isinstance(value, str):
             return [item.strip() for item in value.split(",") if item.strip()]
         return value
@@ -111,37 +107,28 @@ class Settings(BaseSettings):
 
     @property
     def sync_database_url(self) -> str:
-        """URL síncrona, necesaria para las migraciones de Alembic."""
+        """Sync URL for Alembic migrations."""
         return self.database_url.replace("+asyncpg", "")
 
     @property
     def bind_host_is_wildcard(self) -> bool:
-        """Si el proceso escucha en todas las interfaces.
-
-        Un nodo autohospedado casi siempre quiere esto: si escucha solo en
-        `127.0.0.1`, nadie fuera de la máquina puede entrar.
-        """
+        """True when bound to all interfaces; loopback-only blocks LAN access."""
         return self.host.strip() in WILDCARD_HOSTS
 
     @computed_field  # type: ignore[prop-decorator]
     @property
     def kafka_client_id_resolved(self) -> str:
-        """Client ID para Kafka. Si no se setea, se deriva del entorno."""
+        """Kafka client ID; defaults to env-derived value."""
         return self.kafka_client_id or f"recop-{self.env}"
 
     def kafka_topic(self, name: str) -> str:
-        """Construye el nombre completo de un topic con el namespace configurado."""
+        """Full topic name with configured prefix."""
         return f"{self.kafka_topic_prefix}.{name}"
 
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
-    """Devuelve la configuración cacheada a nivel de proceso.
-
-    Si falta una variable requerida, el error se muestra como un mensaje
-    accionable en vez de un traceback de Pydantic: el primer arranque del
-    proyecto no debería exigir leer un stack trace.
-    """
+    """Cached process-wide settings with actionable missing-var errors."""
     try:
         return Settings()
     except ValidationError as exc:
