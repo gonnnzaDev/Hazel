@@ -1,5 +1,3 @@
-"""Identity API contracts."""
-
 from __future__ import annotations
 
 from datetime import datetime
@@ -15,11 +13,9 @@ DisplayName = Annotated[str, Field(min_length=1, max_length=64)]
 
 
 class JoinRequest(BaseModel):
-    """Join a server with just a nickname; no email/password."""
 
     nickname: Nickname
     display_name: DisplayName | None = None
-    """Visible name; defaults to capitalized nickname."""
 
     @field_validator("nickname")
     @classmethod
@@ -33,12 +29,11 @@ class JoinRequest(BaseModel):
             return None
         cleaned = value.strip()
         if not cleaned:
-            raise ValueError("el nombre visible no puede estar vacío")
+            raise ValueError("display name cannot be empty")
         return cleaned
 
 
 class MemberRead(BaseModel):
-    """Server member; exposes no secrets."""
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -52,12 +47,10 @@ class MemberRead(BaseModel):
 
     @field_serializer("role")
     def _serialize_role(self, role: Role) -> str:
-        """Serialize role as text label, not int."""
         return role.label
 
 
 class MemberListResponse(BaseModel):
-    """Paginated member list."""
 
     items: list[MemberRead]
     total: int
@@ -66,20 +59,16 @@ class MemberListResponse(BaseModel):
 
 
 class JoinResponse(BaseModel):
-    """Join result; token is shown only once."""
 
     token: str
-    """Opaque session token scoped to this server."""
 
     expires_at: datetime | None
-    """Expiry; None means valid until revoked."""
 
     member: MemberRead
     server: ServerSummary
 
 
 class ServerSummary(BaseModel):
-    """Minimal server data for responses."""
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -89,14 +78,12 @@ class ServerSummary(BaseModel):
 
 
 class MeResponse(BaseModel):
-    """Caller identity within this token's server."""
 
     member: MemberRead
     server: ServerSummary
 
 
 class MeUpdate(BaseModel):
-    """Change own display name."""
 
     display_name: DisplayName
 
@@ -105,12 +92,11 @@ class MeUpdate(BaseModel):
     def _clean(cls, value: str) -> str:
         cleaned = value.strip()
         if not cleaned:
-            raise ValueError("el nombre visible no puede estar vacío")
+            raise ValueError("display name cannot be empty")
         return cleaned
 
 
 class TokenResponse(BaseModel):
-    """A fresh token."""
 
     token: str
     expires_at: datetime | None

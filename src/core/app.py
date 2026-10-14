@@ -1,8 +1,3 @@
-"""API assembly: node, group, and combined apps.
-
-Group processes bind to one server_id via group_scope; missing scope fails startup.
-"""
-
 from __future__ import annotations
 
 import logging
@@ -24,12 +19,10 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-
 def _base_app(settings: Settings, *, lifespan: object | None) -> FastAPI:
-    """Shared base app for all roles."""
     app = FastAPI(
         title="Recop",
-        summary="Chat autoservido. Tu servidor, tu máquina, tu puerto.",
+        summary="Self-hosted chat. Your server, your machine, your port.",
         version=__version__,
         root_path=settings.root_path,
         debug=settings.debug,
@@ -39,7 +32,6 @@ def _base_app(settings: Settings, *, lifespan: object | None) -> FastAPI:
         redoc_url=f"{settings.root_path}/redoc",
     )
 
-    # Shared contract for desktop/mobile clients; origins stay configured, never open.
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origins,
@@ -59,7 +51,6 @@ def _base_app(settings: Settings, *, lifespan: object | None) -> FastAPI:
 
 
 def create_node_app(settings: Settings | None = None) -> FastAPI:
-    """Node control-plane process: creates and supervises groups."""
     settings = settings or get_settings()
 
     @asynccontextmanager
@@ -80,7 +71,6 @@ def create_node_app(settings: Settings | None = None) -> FastAPI:
 
 
 def create_group_app(*, server_id: str, settings: Settings | None = None) -> FastAPI:
-    """Group process serving exactly one group; never reconciles global state."""
     settings = settings or get_settings()
 
     @asynccontextmanager
@@ -99,7 +89,6 @@ def create_group_app(*, server_id: str, settings: Settings | None = None) -> Fas
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
-    """Node and groups in one process, for dev and tests."""
     settings = settings or get_settings()
 
     @asynccontextmanager
@@ -111,7 +100,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             async with session_scope() as session:
                 await mark_all_inactive(session)
         except Exception:
-            logger.exception("no se pudo reconciliar el estado de los grupos al arrancar")
+            logger.exception("could not reconcile group state at startup; is PostgreSQL up?")
 
         try:
             yield
@@ -121,5 +110,4 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     return _base_app(settings, lifespan=lifespan)
 
 
-#: App used by `uvicorn core.app:app`.
 app = create_app()

@@ -1,8 +1,3 @@
-"""Domain errors mapped to RFC 9457 problem+json.
-
-Services raise without knowing HTTP; handlers translate for all clients.
-"""
-
 from __future__ import annotations
 
 from typing import Any
@@ -16,11 +11,10 @@ PROBLEM_CONTENT_TYPE = "application/problem+json"
 
 
 class DomainError(Exception):
-    """Base for business errors; API layer renders it."""
 
     status_code: int = 400
     code: str = "domain_error"
-    title: str = "Error de dominio"
+    title: str = "Domain error"
 
     def __init__(
         self,
@@ -42,43 +36,40 @@ class DomainError(Exception):
 class NotFoundError(DomainError):
     status_code = 404
     code = "not_found"
-    title = "Recurso no encontrado"
+    title = "Resource not found"
 
 
 class ConflictError(DomainError):
-    """Current-state conflict (e.g. duplicate name, already active)."""
 
     status_code = 409
     code = "conflict"
-    title = "Conflicto"
+    title = "Conflict"
 
 
 class ValidationDomainError(DomainError):
-    """Syntactically valid data violating domain rules."""
 
     status_code = 422
     code = "domain_validation_error"
-    title = "Datos inválidos"
+    title = "Invalid data"
 
 
 class AuthenticationError(DomainError):
     status_code = 401
     code = "unauthenticated"
-    title = "No autenticado"
+    title = "Unauthenticated"
 
 
 class PermissionDeniedError(DomainError):
     status_code = 403
     code = "forbidden"
-    title = "Sin permiso"
+    title = "Permission denied"
 
 
 class ServerInactiveError(DomainError):
-    """Server exists but is stopped; reactivate to accept connections."""
 
     status_code = 409
     code = "server_inactive"
-    title = "Servidor inactivo"
+    title = "Server inactive"
 
 
 def problem(
@@ -89,7 +80,6 @@ def problem(
     code: str,
     extra: dict[str, Any] | None = None,
 ) -> JSONResponse:
-    """Build an application/problem+json response."""
     payload: dict[str, Any] = {
         "type": f"https://recop.dev/errors/{code}",
         "title": title,
@@ -103,7 +93,6 @@ def problem(
 
 
 def register_exception_handlers(app: FastAPI) -> None:
-    """Register handlers mapping exceptions to consistent responses."""
 
     @app.exception_handler(DomainError)
     async def _domain_error_handler(_: Request, exc: DomainError) -> JSONResponse:
@@ -119,8 +108,8 @@ def register_exception_handlers(app: FastAPI) -> None:
     async def _validation_error_handler(_: Request, exc: RequestValidationError) -> JSONResponse:
         return problem(
             status=422,
-            title="Datos inválidos",
-            detail="El cuerpo de la petición no cumple el contrato esperado.",
+            title="Invalid data",
+            detail="The request body does not match the expected contract.",
             code="request_validation_error",
             extra={"errors": exc.errors()},
         )
@@ -129,17 +118,16 @@ def register_exception_handlers(app: FastAPI) -> None:
     async def _http_error_handler(_: Request, exc: StarletteHTTPException) -> JSONResponse:
         return problem(
             status=exc.status_code,
-            title="Error HTTP",
+            title="HTTP error",
             detail=str(exc.detail),
             code=f"http_{exc.status_code}",
         )
 
     @app.exception_handler(Exception)
     async def _unhandled_error_handler(_: Request, exc: Exception) -> JSONResponse:
-        # Never leak internals; details stay in server logs.
         return problem(
             status=500,
-            title="Error interno",
-            detail="Ocurrió un error inesperado. Intentá de nuevo más tarde.",
+            title="Internal error",
+            detail="An unexpected error occurred. Please try again later.",
             code="internal_error",
         )

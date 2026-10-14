@@ -1,5 +1,3 @@
-"""Shared FastAPI dependencies."""
-
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
@@ -13,7 +11,6 @@ from core.db.session import get_session_maker
 
 
 async def db_session() -> AsyncIterator[AsyncSession]:
-    """Per-request session; commits on success, rolls back on error."""
     async with get_session_maker()() as session:
         try:
             yield session

@@ -1,58 +1,58 @@
-# Recop — atajos de desarrollo
+# Recop — dev shortcuts
 .DEFAULT_GOAL := help
 .PHONY: help install setup up down logs stack-up stack-down stack-logs api migrate revision test test-integration lint format typecheck check clean
 
-help: ## Mostrar esta ayuda
+help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
 		| awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-12s\033[0m %s\n", $$1, $$2}'
 
-install: ## Instalar dependencias y crear el .venv
+install: ## Install dependencies and create the .venv
 	uv sync
 
-setup: ## Instalación completa (delega a ./scripts/setup.sh)
+setup: ## Full installation (delegates to ./scripts/setup.sh)
 	./scripts/setup.sh
 
-up: ## Levantar PostgreSQL y Kafka (compose de desarrollo)
+up: ## Start PostgreSQL and Kafka (dev compose)
 	docker compose -f docker-compose.dev.yml up -d
-	@echo "Esperando a que los servicios estén listos..."
+	@echo "Waiting for the services to be ready..."
 	@until docker compose -f docker-compose.dev.yml exec -T postgres \
 		pg_isready -U $${POSTGRES_USER:-recop} >/dev/null 2>&1; do sleep 1; done
-	@echo "Listo."
+	@echo "Ready."
 
-down: ## Apagar los servicios
+down: ## Stop the services
 	docker compose -f docker-compose.dev.yml down
 
-reset: ## Apagar los servicios Y borrar los volúmenes (destructivo)
+reset: ## Stop the services AND delete the volumes (destructive)
 	docker compose -f docker-compose.dev.yml down -v
 
-logs: ## Ver logs de los servicios
+logs: ## Show the service logs
 	docker compose -f docker-compose.dev.yml logs -f
 
-# ─── Todo containerizado ──────────────────────────────────────────────────────
-stack-up: ## Levantar nodo + PostgreSQL + Kafka (todo en containers)
+# ─── Fully containerized ──────────────────────────────────────────────────────
+stack-up: ## Start node + PostgreSQL + Kafka (all in containers)
 	docker compose up -d --build
 
-stack-down: ## Parar el stack
+stack-down: ## Stop the stack
 	docker compose down
 
-stack-logs: ## Logs del nodo
+stack-logs: ## Node logs
 	docker compose logs -f api
 
-api: ## Levantar la API con recarga
+api: ## Start the API with reload
 	uv run python -m core --reload
 
-migrate: ## Aplicar migraciones
+migrate: ## Apply migrations
 	uv run alembic upgrade head
 
-revision: ## Crear una migración: make revision m="mensaje"
+revision: ## Create a migration: make revision m="message"
 	uv run alembic revision --autogenerate -m "$(m)"
 
-test: ## Correr los tests (los de integración se omiten sin RECOP_TEST_DATABASE_URL)
+test: ## Run the tests (integration ones are skipped without RECOP_TEST_DATABASE_URL)
 	uv run pytest
 
-test-integration: ## Correr los tests contra una base real (requiere PostgreSQL)
+test-integration: ## Run the tests against a real database (requires PostgreSQL)
 	@if [ -z "$(RECOP_TEST_DATABASE_URL)" ]; then \
-		echo "Falta RECOP_TEST_DATABASE_URL. Ej:"; \
+		echo "Missing RECOP_TEST_DATABASE_URL. E.g.:"; \
 		echo "  make test-integration RECOP_TEST_DATABASE_URL=postgresql+asyncpg://recop:recop@localhost:5432/recop_test"; \
 		exit 1; \
 	fi
@@ -61,14 +61,14 @@ test-integration: ## Correr los tests contra una base real (requiere PostgreSQL)
 lint: ## Lint
 	uv run ruff check .
 
-format: ## Formatear
+format: ## Format
 	uv run ruff format .
 
-typecheck: ## Chequeo de tipos
+typecheck: ## Type check
 	uv run mypy src
 
-check: lint format typecheck test ## Ejecutar todo
+check: lint format typecheck test ## Run everything
 
-clean: ## Limpiar artefactos
+clean: ## Clean artifacts
 	rm -rf .pytest_cache .mypy_cache .ruff_cache **/__pycache__
 	find . -type d -name __pycache__ -prune -exec rm -rf {} +

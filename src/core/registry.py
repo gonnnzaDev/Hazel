@@ -1,8 +1,3 @@
-"""Django-style app registry; explicit list keeps migration order deterministic.
-
-New module: create src/<name>/, then add it to INSTALLED_APPS.
-"""
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -18,7 +13,6 @@ from servers.view import router as servers_router
 
 @dataclass(frozen=True, slots=True)
 class AppConfig:
-    """Registered app config."""
 
     name: str
     router: APIRouter
@@ -26,18 +20,16 @@ class AppConfig:
     tags: tuple[str, ...] = ()
 
 
-# Order matters: Alembic walks models in this order; base apps first.
 INSTALLED_APPS: tuple[AppConfig, ...] = (
     AppConfig(name="common", router=common_router),
-    AppConfig(name="node", router=node_router, prefix="/node", tags=("nodo",)),
-    AppConfig(name="identity", router=identity_router, tags=("identidad",)),
-    AppConfig(name="servers", router=servers_router, prefix="/servers", tags=("servidores",)),
-    AppConfig(name="calls", router=calls_router, prefix="/servers", tags=("llamadas",)),
+    AppConfig(name="node", router=node_router, prefix="/node", tags=("node",)),
+    AppConfig(name="identity", router=identity_router, tags=("identity",)),
+    AppConfig(name="servers", router=servers_router, prefix="/servers", tags=("servers",)),
+    AppConfig(name="calls", router=calls_router, prefix="/servers", tags=("calls",)),
 )
 
 
 class AppRegistry:
-    """Active apps and their assembled routers."""
 
     def __init__(self, installed: tuple[AppConfig, ...] = INSTALLED_APPS) -> None:
         self._installed = installed
@@ -47,7 +39,6 @@ class AppRegistry:
         return tuple(app.name for app in self._installed)
 
     def build_router(self) -> APIRouter:
-        """Router combining all registered app routers."""
         router = APIRouter()
         for app in self._installed:
             router.include_router(app.router, prefix=app.prefix, tags=list(app.tags) or [app.name])

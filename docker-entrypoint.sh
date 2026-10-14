@@ -1,13 +1,13 @@
 #!/bin/sh
-# Entrypoint del container de Recop.
+# Recop container entrypoint.
 #
-# Hace dos cosas y después se convierte en el proceso de la API:
-#   1. Espera a que PostgreSQL esté listo.
-#   2. Aplica las migraciones.
+# It does two things and then becomes the API process:
+#   1. Waits for PostgreSQL to be ready.
+#   2. Applies the migrations.
 #
-# Ambas se pueden desactivar con RECOP_AUTO_MIGRATE=false, que es lo que hay que
-# hacer en un despliegue con varias réplicas del mismo nodo: si todas corren
-# migraciones al arrancar, se pisan entre ellas.
+# Both can be disabled with RECOP_AUTO_MIGRATE=false, which is what you want
+# in a deployment with several replicas of the same node: if they all run
+# migrations at startup, they step on each other.
 
 set -eu
 
@@ -15,18 +15,18 @@ RECOP_AUTO_MIGRATE="${RECOP_AUTO_MIGRATE:-true}"
 MIGRATE_TIMEOUT="${RECOP_MIGRATE_TIMEOUT:-60}"
 
 if [ "$RECOP_AUTO_MIGRATE" = "true" ]; then
-    echo "==> esperando a la base de datos (timeout: ${MIGRATE_TIMEOUT}s)"
+    echo "==> waiting for the database (timeout: ${MIGRATE_TIMEOUT}s)"
     if ! python -m core.wait_for_db --timeout "$MIGRATE_TIMEOUT"; then
-        echo "!! la base de datos no respondió a tiempo" >&2
+        echo "!! the database did not respond in time" >&2
         exit 1
     fi
 
-    echo "==> aplicando migraciones"
+    echo "==> applying migrations"
     alembic upgrade head
 fi
 
-echo "==> arrancando el nodo"
-# exec reemplaza este shell por Uvicorn: así PID 1 es el servidor y recibe las
-# señales directamente. tini, que está por delante en el ENTRYPOINT, se encarga
-# de reenviar y de eliminar zombies.
+echo "==> starting the node"
+# exec replaces this shell with Uvicorn: so PID 1 is the server and receives
+# signals directly. tini, which runs ahead in the ENTRYPOINT, takes care
+# of forwarding them and reaping zombies.
 exec python -m core "$@"
