@@ -3,19 +3,30 @@
   "productName": "Hazel",
   "version": "0.2.0",
   "description": "Cliente de escritorio de Hazel: tu chat, tu máquina, tu puerto.",
+  "build": {
+    "appId": "dev.gonnnza.hazel",
+    "productName": "Hazel",
+    "directories": { "output": "release" },
+    "files": ["dist/**", "package.json"],
+    "linux": { "target": ["AppImage", "deb"], "category": "Network" },
+    "win": { "target": ["nsis", "portable"] },
+    "mac": { "target": ["dmg"] }
+  },
   "main": "dist/main.js",
   "private": true,
   "license": "GPL-3.0-or-later",
   "scripts": {
     "build": "node build.mjs",
+    "package": "npm run build && electron-builder",
     "typecheck": "tsc -p tsconfig.json && tsc -p src/main/tsconfig.json",
     "start": "npm run build && electron .",
     "dev": "npm run build && electron . --dev"
   },
   "devDependencies": {
     "@types/react": "^19.2.7",
-    "@types/react-dom": "^19.2.3",
+    "@types/react-dom": "^19.2.23",
     "electron": "^44.7.0",
+    "electron-builder": "^25.1.8",
     "esbuild": "^0.28.2",
     "typescript": "^7.0.2"
   },
