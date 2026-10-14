@@ -4,10 +4,10 @@ from dataclasses import dataclass
 
 from fastapi import APIRouter
 
+from calls.view import router as calls_router
 from common.view import router as common_router
 from identity.view import router as identity_router
 from node.view import router as node_router
-from servers.calls_view import router as calls_router
 from servers.view import router as servers_router
 
 

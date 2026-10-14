@@ -1,93 +1,40 @@
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
-from collections.abc import Awaitable, Callable
-from dataclasses import dataclass, field
+
+from calls.model import Peer
+from calls.repository import RoomStore
 
 logger = logging.getLogger(__name__)
-
-PeerSend = Callable[[dict[str, object]], Awaitable[None]]
 
 _FORWARDED = frozenset({"offer", "answer", "ice"})
 
 
-@dataclass(slots=True)
-class Peer:
-
-    member_id: str
-    nickname: str
-    display_name: str
-    mic_on: bool = True
-    cam_on: bool = False
-    send: PeerSend | None = None
-
-    def public(self) -> dict[str, object]:
-        return {
-            "member_id": self.member_id,
-            "nickname": self.nickname,
-            "display_name": self.display_name,
-            "mic": self.mic_on,
-            "cam": self.cam_on,
-        }
-
-
-@dataclass(slots=True)
-class Room:
-
-    channel_id: str
-    peers: dict[str, Peer] = field(default_factory=dict)
-
-    @property
-    def is_empty(self) -> bool:
-        return not self.peers
-
-
 class CallManager:
 
-    def __init__(self) -> None:
-        self._rooms: dict[str, Room] = {}
-        self._lock = asyncio.Lock()
+    def __init__(self, store: RoomStore | None = None) -> None:
+        self._store = store or RoomStore()
 
     async def join(self, channel_id: str, peer: Peer) -> list[Peer]:
-        async with self._lock:
-            room = self._rooms.setdefault(channel_id, Room(channel_id=channel_id))
-            existing = [p for mid, p in room.peers.items() if mid != peer.member_id]
-            room.peers[peer.member_id] = peer
+        existing = await self._store.add(channel_id, peer)
         logger.info(
             "call %s: join %s (%d present)", channel_id, peer.nickname, len(existing) + 1
         )
         return existing
 
     async def leave(self, channel_id: str, member_id: str) -> list[Peer]:
-        async with self._lock:
-            room = self._rooms.get(channel_id)
-            if room is None:
-                return []
-            room.peers.pop(member_id, None)
-            remaining = list(room.peers.values())
-            if room.is_empty:
-                del self._rooms[channel_id]
+        remaining = await self._store.remove(channel_id, member_id)
         logger.info("call %s: leave %s (%d remaining)", channel_id, member_id, len(remaining))
         return remaining
 
     async def set_state(
         self, channel_id: str, member_id: str, *, mic: bool, cam: bool
     ) -> Peer | None:
-        async with self._lock:
-            room = self._rooms.get(channel_id)
-            peer = room.peers.get(member_id) if room is not None else None
-            if peer is not None:
-                peer.mic_on = mic
-                peer.cam_on = cam
-        return peer
+        return await self._store.update_state(channel_id, member_id, mic=mic, cam=cam)
 
     async def send_to(self, channel_id: str, member_id: str, message: dict[str, object]) -> bool:
-        async with self._lock:
-            room = self._rooms.get(channel_id)
-            peer = room.peers.get(member_id) if room is not None else None
-
+        peer = self._store.get(channel_id, member_id)
         if peer is None or peer.send is None:
             return False
         return await _safe_send(peer, message)
@@ -95,28 +42,61 @@ class CallManager:
     async def broadcast(
         self, channel_id: str, message: dict[str, object], *, exclude: str | None = None
     ) -> None:
-        async with self._lock:
-            room = self._rooms.get(channel_id)
-            targets = (
-                [p for mid, p in room.peers.items() if mid != exclude] if room is not None else []
-            )
-
-        for peer in targets:
+        for peer in self._store.targets(channel_id, exclude):
             await _safe_send(peer, message)
 
+    async def handle_signal(self, channel_id: str, peer: Peer, raw: str) -> None:
+        message = parse_signal(raw)
+        if message is None:
+            return
+
+        kind = message_kind(message)
+        if kind is None:
+            return
+
+        if is_forwardable(kind):
+            target = message.get("to")
+            if not isinstance(target, str) or not target:
+                return
+            await self.send_to(
+                channel_id,
+                target,
+                {
+                    "type": kind,
+                    "from": peer.member_id,
+                    "payload": message.get("sdp") if kind != "ice" else message.get("candidate"),
+                },
+            )
+            return
+
+        if kind == "state":
+            mic = _as_bool(message.get("mic"), default=peer.mic_on)
+            cam = _as_bool(message.get("cam"), default=peer.cam_on)
+            updated = await self.set_state(channel_id, peer.member_id, mic=mic, cam=cam)
+            if updated is not None:
+                await self.broadcast(
+                    channel_id,
+                    {
+                        "type": "peer-state",
+                        "member_id": peer.member_id,
+                        "mic": updated.mic_on,
+                        "cam": updated.cam_on,
+                    },
+                    exclude=peer.member_id,
+                )
+
     def snapshot(self, channel_id: str) -> list[dict[str, object]]:
-        room = self._rooms.get(channel_id)
-        if room is None:
-            return []
-        return [peer.public() for peer in room.peers.values()]
+        return self._store.snapshot(channel_id)
 
     def count(self, channel_id: str) -> int:
-        room = self._rooms.get(channel_id)
-        return len(room.peers) if room is not None else 0
+        return self._store.count(channel_id)
 
     async def reset(self) -> None:
-        async with self._lock:
-            self._rooms.clear()
+        await self._store.reset()
+
+
+def _as_bool(value: object, *, default: bool) -> bool:
+    return value if isinstance(value, bool) else default
 
 
 async def _safe_send(peer: Peer, message: dict[str, object]) -> bool:
