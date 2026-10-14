@@ -1,6 +1,6 @@
-from __future__ import annotations
-
 """Token introspection: middleware validates token and returns the member."""
+
+from __future__ import annotations
 
 from typing import Annotated
 
