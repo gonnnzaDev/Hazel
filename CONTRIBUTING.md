@@ -34,7 +34,7 @@ Necesitás Python 3.14+, [uv](https://docs.astral.sh/uv/) y Docker.
 
 ```bash
 uv sync
-cp .env.example .env
+echo "RECOP_SECRET_KEY=$(python3 -c 'import secrets; print(secrets.token_urlsafe(32))')" > .env
 make up                      # levanta PostgreSQL y Kafka
 uv run alembic upgrade head
 make api                     # arranca el nodo

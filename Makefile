@@ -8,7 +8,6 @@ help: ## Mostrar esta ayuda
 
 install: ## Instalar dependencias y crear el .venv
 	uv sync
-	@cp -n .env.example .env 2>/dev/null || true
 
 setup: ## Instalación completa (delega a ./scripts/setup.sh)
 	./scripts/setup.sh
