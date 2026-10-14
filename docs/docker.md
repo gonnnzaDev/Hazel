@@ -1,166 +1,164 @@
 # Docker
 
-La idea es que cualquiera que clone el repositorio tenga **exactamente el mismo
-entorno**, sin instalar Python, PostgreSQL ni Kafka a mano.
+The idea is that anyone cloning the repo gets **exactly the same environment**,
+without installing Python, PostgreSQL or Kafka by hand.
 
 ```bash
 git clone https://github.com/gonnnzaDev/recop
 cd recop
 cp .env.example .env
-# generar un secreto de verdad
+# generate a real secret
 python3 -c "import secrets; print(secrets.token_urlsafe(32))"
-#   ↑ copialo a RECOP_SECRET_KEY en el .env
+#   ↑ copy it to RECOP_SECRET_KEY in .env
 
 docker compose up
 ```
 
-Eso levanta el nodo, PostgreSQL y Kafka. La API queda en
+That brings up the node, PostgreSQL and Kafka. The API lands at
 <http://localhost:7272/docs>.
 
 ---
 
-## Los dos composes
+## The two composes
 
-| Archivo | Qué levanta | Cuándo |
+| File | What it brings up | When |
 |---|---|---|
-| `docker-compose.yml` | Nodo + PostgreSQL + Kafka | Para correr todo containerizado, igual que en producción |
-| `docker-compose.dev.yml` | Solo PostgreSQL + Kafka | Para desarrollar: la API corre en tu máquina y recarga al guardar |
+| `docker-compose.yml` | Node + PostgreSQL + Kafka | To run everything containerized, same as production |
+| `docker-compose.dev.yml` | Only PostgreSQL + Kafka | For development: the API runs on your machine and reloads on save |
 
-Para desarrollar:
+For development:
 
 ```bash
 docker compose -f docker-compose.dev.yml up -d
 make migrate
-make api          # corre en tu máquina, con recarga
+make api          # runs on your machine, with reload
 ```
 
 ---
 
-## Imagen multi-arquitectura
+## Multi-architecture image
 
-La imagen base está fijada **por digest**, y es el digest del índice
-multi-arquitectura, no el de una plataforma. Por eso el mismo build produce la
-imagen correcta en cada máquina:
+The base image is pinned **by digest**, and it's the multi-architecture index
+digest, not a single platform's. That's why the same build produces the right
+image on each machine:
 
-| Plataforma | Qué la usa |
+| Platform | Used by |
 |---|---|
-| `linux/amd64` | PC Intel/AMD, Windows con Docker Desktop, Mac Intel |
-| `linux/arm64/v8` | Apple Silicon, Android 64-bit (Termux) |
-| `linux/arm/v7` | Android 32-bit, Raspberry Pi |
-| `linux/386` | x86 de 32 bits |
-| `linux/ppc64le` | Raspberry Pi viejo, algunos SBC |
+| `linux/amd64` | Intel/AMD PC, Windows with Docker Desktop, Intel Mac |
+| `linux/arm64/v8` | Apple Silicon, 64-bit Android (Termux) |
+| `linux/arm/v7` | 32-bit Android, Raspberry Pi |
+| `linux/386` | 32-bit x86 |
+| `linux/ppc64le` | Old Raspberry Pi, some SBCs |
 
-Para construirlas todas de una:
+To build them all at once:
 
 ```bash
-docker buildx create --use --name recap   # solo una vez
+docker buildx create --use --name recap   # only once
 docker buildx build \
   --platform linux/amd64,linux/arm64,linux/arm/v7 \
   -t gonnnzadev/recop:0.1.0 \
   --push .
 ```
 
-> Android no corre Docker nativo. La vía es **Termux**, que sí corre containers
-> en Android 7 en adelante. Los scripts de instalación lo tienen en cuenta.
+> Android doesn't run native Docker. The way in is **Termux**, which does run
+> containers on Android 7 and up. Install scripts account for it.
 
 ---
 
-## Qué hace la imagen
+## What the image does
 
-**Multi-stage.** La primera etapa compila las dependencias con `uv`; la segunda
-copia solo el resultado. La imagen final no lleva ni el compilador, ni `uv`, ni
-el código fuente que ya no se usa.
+**Multi-stage.** The first stage compiles dependencies with `uv`; the second
+copies only the result. The final image carries neither the compiler, nor `uv`,
+nor source code no longer used.
 
-**Usuario sin privilegios.** Corre como `recap` (uid 1001). Un nodo es un proceso
-que vive en la PC de alguien; no debería poder escribir en `/usr` ni crear
-usuarios.
+**Unprivileged user.** Runs as `recap` (uid 1001). A node is a process living
+on someone's PC; it shouldn't be able to write to `/usr` or create users.
 
-**`tini` como PID 1.** Sin él, `SIGTERM` no llega a Uvicorn y cada
-`docker compose restart` tarda 10 segundos. Con `tini`, la señal llega, Uvicorn
-cierra las conexiones WebSocket y el container sale limpio.
+**`tini` as PID 1.** Without it, `SIGTERM` never reaches Uvicorn and every
+`docker compose restart` takes 10 seconds. With `tini`, the signal arrives,
+Uvicorn closes WebSocket connections and the container exits cleanly.
 
-**Migraciones.** El entrypoint espera a que PostgreSQL responda y después corre
-`alembic upgrade head`. Es necesario: en Docker la API y la base arrancan a la
-vez, y PostgreSQL tarda unos segundos en aceptar conexiones.
+**Migrations.** The entrypoint waits for PostgreSQL to answer and then runs
+`alembic upgrade head`. It's required: in Docker the API and DB start at the
+same time, and PostgreSQL takes a few seconds to accept connections.
 
 ```
-==> esperando a la base de datos (timeout: 60s)
-    base de datos lista (postgres:5432/recop)
-==> aplicando migraciones
-==> arrancando el nodo
+==> waiting for the database (timeout: 60s)
+    database ready (postgres:5432/recop)
+==> applying migrations
+==> starting the node
 ```
 
-Si tenés varias réplicas del mismo nodo, poné `RECOP_AUTO_MIGRATE=false` en
-todas menos una, o se pisan entre ellas.
+If you run several replicas of the same node, set `RECOP_AUTO_MIGRATE=false` on
+all but one, or they'll step on each other.
 
 ---
 
-## Configuración
+## Configuration
 
-Se hace por variables de entorno, no por archivo. El `.env` lo lee el compose.
+Done via environment variables, not files. Compose reads `.env`.
 
-| Variable | Para qué | Default |
+| Variable | What for | Default |
 |---|---|---|
-| `RECOP_SECRET_KEY` | Firma los tokens. **Obligatoria en producción.** | — |
-| `RECOP_PUBLISH_HOST` | Interfaz donde se publica el puerto | `0.0.0.0` |
-| `RECOP_PUBLISH_PORT` | Puerto publicado en tu máquina | `7272` |
-| `RECOP_AUTO_MIGRATE` | Aplicar migraciones al arrancar | `true` |
-| `RECOP_ENV` | `local` \| `test` \| `prod` | `prod` en la imagen |
-| `RECOP_DATABASE_URL` | Conexión a PostgreSQL | apunta a `postgres:5432` |
+| `RECOP_SECRET_KEY` | Signs tokens. **Required in production.** | — |
+| `RECOP_PUBLISH_HOST` | Interface where the port is published | `0.0.0.0` |
+| `RECOP_PUBLISH_PORT` | Published port on your machine | `7272` |
+| `RECOP_AUTO_MIGRATE` | Apply migrations on start | `true` |
+| `RECOP_ENV` | `local` \| `test` \| `prod` | `prod` in the image |
+| `RECOP_DATABASE_URL` | PostgreSQL connection | points to `postgres:5432` |
 
-Si falta `RECOP_SECRET_KEY`, el compose falla con:
+If `RECOP_SECRET_KEY` is missing, compose fails with:
 
 ```
-RECOP_SECRET_KEY: definí RECOP_SECRET_KEY en tu .env
+RECOP_SECRET_KEY: set RECOP_SECRET_KEY in your .env
 ```
 
-Es intencional: es preferible no arrancar a arrancar con el secreto de ejemplo
-del `.env.example`.
+It's intentional: better not to start than to start with the example secret
+from `.env.example`.
 
 ---
 
-## Comandos útiles
+## Useful commands
 
 ```bash
-docker compose up -d              # levanta en background
-docker compose logs -f api        # sigue los logs del nodo
-docker compose ps                 # estado y salud
+docker compose up -d              # bring up in background
+docker compose logs -f api        # follow node logs
+docker compose ps                 # status and health
 docker compose exec api python -m core.cli --help
-docker compose down               # para, conserva los datos
-docker compose down -v            # para y BORRA los volúmenes
-docker compose exec postgres psql -U recap -d recop   # entrar a la base
+docker compose down               # stop, keep data
+docker compose down -v            # stop and DELETE volumes
+docker compose exec postgres psql -U recap -d recop   # enter the DB
 ```
 
-Los datos viven en los volúmenes `postgres_data` y `kafka_data`. `down` los
-conserva; `down -v` los borra.
+Data lives in `postgres_data` and `kafka_data` volumes. `down` keeps them;
+`down -v` deletes them.
 
 ---
 
-## Problemas frecuentes
+## Frequent issues
 
-**El puerto ya está ocupado**
+**Port already in use**
 
 ```bash
 RECOP_PUBLISH_PORT=8080 docker compose up
 ```
 
-**`permission denied` al montar volúmenes**
+**`permission denied` mounting volumes**
 
-No debería pasar en Linux; en Docker Desktop, revisá que el proyecto esté en una
-ruta que Docker tenga acceso.
+Shouldn't happen on Linux; on Docker Desktop, check the project is on a path
+Docker can access.
 
-**El nodo reinicia en bucle**
+**Node restarts in a loop**
 
-Casi siempre es que no puede conectarse a la base. Mirá:
+Almost always it can't connect to the DB. Look at:
 
 ```bash
 docker compose logs api
 ```
 
-Si dice `la base de datos no respondió`, el problema está en `postgres`, no en
-Recop.
+If it says `database didn't respond`, the problem is in `postgres`, not Recop.
 
-**No me entra nadie desde la red local**
+**Nobody can join me from the local network**
 
-`RECOP_PUBLISH_HOST` tiene que ser `0.0.0.0`, no `127.0.0.1`. Y el firewall del
-sistema tiene que dejar pasar el puerto.
+`RECOP_PUBLISH_HOST` must be `0.0.0.0`, not `127.0.0.1`. And the system firewall
+must let the port through.
