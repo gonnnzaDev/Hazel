@@ -1,4 +1,4 @@
-"""miembros y tokens
+"""Members and tokens
 
 Revision ID: 41cdd7db0313
 Revises: 28bf06e31589

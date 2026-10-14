@@ -1,12 +1,6 @@
-"""Espera a que PostgreSQL esté disponible.
+"""Wait for PostgreSQL before migrations/startup.
 
-Existe por una razón muy concreta: en Docker, el container de la API y el de
-PostgreSQL arrancan al mismo tiempo, y PostgreSQL tarda entre uno y cinco segundos
-en aceptar conexiones. Sin esperar, el entrypoint aplicaría migraciones contra una
-base que todavía no está y el container moriría —y con `restart: unless-stopped`
-volvería a morir, en bucle, hasta que alguien lo note.
-
-    python -m core.wait_for_db --timeout 60
+In Docker both containers start together and PG needs seconds; else the entrypoint crash-loops.
 """
 
 from __future__ import annotations
@@ -23,14 +17,7 @@ from core.db.session import dispose_engine, get_engine
 
 
 async def wait_for_db(timeout_seconds: float, interval: float = 1.0) -> bool:
-    """Intenta conectarse hasta que responda o se agote el tiempo.
-
-    Se capturan **dos** familias de excepción porque el fallo de conexión no pasa
-    por SQLAlchemy: asyncpg deja escapar el `OSError` crudo del socket (tipo
-    `ConnectionRefusedError`). Si se-catching solo `SQLAlchemyError`, el primer
-    intento mataría el container y el reintento nunca ocurriría — que es
-    justamente lo que esta función existe para evitar.
-    """
+    """Poll until SELECT 1 succeeds or timeout."""
     settings = get_settings()
     engine = get_engine()
     deadline = asyncio.get_running_loop().time() + timeout_seconds
@@ -44,9 +31,9 @@ async def wait_for_db(timeout_seconds: float, interval: float = 1.0) -> bool:
             await dispose_engine()
             print(f"    base de datos lista ({settings.database_url.rsplit('@', 1)[-1]})")
             return True
+        # asyncpg leaks raw OSError outside SQLAlchemy; both must be caught.
         except (SQLAlchemyError, OSError) as exc:
-            # Se descartan las conexiones fallidas del pool: si no, cada intento
-            # reusa un socket que ya se sabe muerto y nunca se recupera.
+            # Drop failed pool connections; else retries reuse a dead socket.
             await dispose_engine()
 
             remaining = deadline - asyncio.get_running_loop().time()

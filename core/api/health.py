@@ -1,4 +1,4 @@
-"""Endpoints de salud y diagnóstico del nodo."""
+"""Node health and diagnostics."""
 
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ router = APIRouter(prefix="/health", tags=["salud"])
 
 @router.get("", summary="Estado del proceso")
 async def health(settings: SettingsDep) -> dict[str, object]:
-    """Liveness. No toca dependencias: si responde, el proceso está vivo."""
+    """Liveness; touches no dependencies."""
     return {
         "status": "ok",
         "service": "recop-node",
@@ -26,14 +26,7 @@ async def health(settings: SettingsDep) -> dict[str, object]:
 
 @router.get("/ready", summary="Listo para recibir tráfico")
 async def readiness(response: Response, session: SessionDep) -> dict[str, object]:
-    """Readiness. Verifica que las dependencias del nodo respondan.
-
-    Devuelve 503 si el nodo no puede servir tráfico, para que un orquestador
-    (o el propio reinicio del proceso) lo detecte.
-
-    Se reportan **todas** las dependencias aunque una falle: así el cliente ve
-    el panorama completo y no solo el primer error.
-    """
+    """Readiness with all dependency checks; 503 when unservable."""
     checks: dict[str, object] = {}
     ready = True
 
@@ -44,8 +37,7 @@ async def readiness(response: Response, session: SessionDep) -> dict[str, object
         checks["database"] = f"error: {type(exc).__name__}"
         ready = False
 
-    # Kafka entra con la app de chat; por ahora se reporta explícitamente
-    # como no conectado en vez de omitirlo.
+    # Kafka not wired yet; reported explicitly instead of omitted.
     checks["kafka"] = "not_wired"
 
     if not ready:

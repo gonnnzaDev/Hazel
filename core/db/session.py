@@ -1,8 +1,6 @@
-"""Engine y sesión de SQLAlchemy async.
+"""Lazy process-wide async engine and session factory.
 
-El engine se crea de forma perezosa y vive a nivel de proceso, para no abrir
-conexiones al importar el módulo. FastAPI usa `session_scope` como dependencia;
-el CLI y los scripts usan el context manager directamente.
+Avoids opening connections on import; FastAPI and CLI share it.
 """
 
 from __future__ import annotations
@@ -24,20 +22,20 @@ _session_maker: async_sessionmaker[AsyncSession] | None = None
 
 
 def build_engine(settings: Settings | None = None) -> AsyncEngine:
-    """Crea un engine nuevo. Usado por tests que necesitan un engine aislado."""
+    """New engine; tests needing isolation use this."""
     config = settings or get_settings()
     return create_async_engine(
         config.database_url,
         echo=config.db_echo,
         pool_size=config.db_pool_size,
         max_overflow=config.db_max_overflow,
-        # Prepared statements + PgBouncer no se mixes bien.
+        # Prepared statements clash with PgBouncer.
         pool_pre_ping=True,
     )
 
 
 def get_engine() -> AsyncEngine:
-    """Devuelve el engine del proceso, creándolo en el primer acceso."""
+    """Process engine, created on first access."""
     global _engine
     if _engine is None:
         _engine = build_engine()
@@ -45,19 +43,19 @@ def get_engine() -> AsyncEngine:
 
 
 def get_session_maker() -> async_sessionmaker[AsyncSession]:
-    """Devuelve el factory de sesiones del proceso."""
+    """Process session factory."""
     global _session_maker
     if _session_maker is None:
         _session_maker = async_sessionmaker(
             bind=get_engine(),
-            expire_on_commit=False,  # los objetos siguen usables tras commit
+            expire_on_commit=False,  # Objects stay usable after commit.
             autoflush=False,
         )
     return _session_maker
 
 
 async def dispose_engine() -> None:
-    """Cierra todas las conexiones del engine. Se llama en el shutdown."""
+    """Close all engine connections; called on shutdown."""
     global _engine, _session_maker
     if _engine is not None:
         await _engine.dispose()
@@ -67,10 +65,7 @@ async def dispose_engine() -> None:
 
 @asynccontextmanager
 async def session_scope() -> AsyncIterator[AsyncSession]:
-    """Sesión transaccable para uso fuera del ciclo de requests.
-
-    Hace commit implícito al salir sin excepción y rollback ante error.
-    """
+    """Transactional session for non-request code; commits on success, rolls back on error."""
     async with get_session_maker()() as session:
         try:
             yield session

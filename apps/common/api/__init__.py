@@ -1,1 +1,1 @@
-"""Capa API de `common`."""
+"""`common` API layer."""

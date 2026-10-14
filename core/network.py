@@ -1,18 +1,6 @@
-"""Resolución de direcciones de red, sin dependencias externas.
+"""Stdlib-only local address resolution (0.0.0.0 is not connectable).
 
-El dueño tiene que compartir `ip:puerto` con sus invitados, pero el nodo escucha
-en `0.0.0.0`, que es un comodín: no se puede conectar a `0.0.0.0`.
-
-Este módulo resuelve la IP real de la máquina usando solo la biblioteca estándar,
-para que funcione igual en Linux, macOS, Windows y Android (Termux) sin pedirle
-una dependencia nativa al usuario.
-
-## Por qué no se adivina una sola IP
-
-Un nodo puede tener VPN, docker, o tres placas de red. Elegir una sola IP y
-mostrarla como si fuera la correcta es peor que mostrar todas las candidatas y
-dejar que el dueño o su cliente elijan. Por eso `local_addresses()` devuelve una
-lista y no un valor.
+Returns all candidates instead of guessing one; single-IP guesses break on multi-NIC/VPN hosts.
 """
 
 from __future__ import annotations
@@ -27,24 +15,19 @@ AddressFamily = Literal["ipv4", "ipv6"]
 
 
 class LocalAddress(BaseModel):
-    """Una dirección por la que el nodo puede ser alcanzado."""
+    """Address the node may be reachable at."""
 
     host: str
     family: AddressFamily
     private: bool
-    """Si es una dirección privada de red local.
-
-    Las privadas (`192.168.x.x`, `10.x.x.x`, `172.16-31.x.x`) son las que sirven
-    para un grupo de amigos en la misma red. Las públicas casi nunca están
-    expuestas y están detrás de un router.
-    """
+    """Private LAN address; public ones are usually behind NAT."""
 
     loopback: bool = False
-    """`127.0.0.1` o `::1`. Sirve solo para pruebas locales."""
+    """Loopback; local testing only."""
 
 
 def _describe(raw: str) -> LocalAddress | None:
-    """Clasifica una dirección. Devuelve None si no es usable."""
+    """Classify an address; None when unusable."""
     try:
         parsed = ip_address(raw)
     except ValueError:
@@ -61,7 +44,7 @@ def _describe(raw: str) -> LocalAddress | None:
 
 
 def _hostname_addresses() -> list[str]:
-    """Direcciones que el sistema asocia al hostname de la máquina."""
+    """Addresses the OS maps to this hostname."""
     try:
         hostname = socket.gethostname()
     except OSError:
@@ -73,11 +56,10 @@ def _hostname_addresses() -> list[str]:
     try:
         infos = socket.getaddrinfo(hostname, None, proto=socket.IPPROTO_TCP)
     except (socket.gaierror, OSError):
-        # Si el hostname no resuelve, se cae al fallback de abajo.
+        # Unresolvable hostname falls through to the fallback below.
         return []
 
-    # sockaddr_ipv4 es (host, port, ...) y sockaddr_ipv6 tiene más campos. En
-    # ambos casos el host es el primer elemento.
+    # Host is element 0 in both IPv4 and IPv6 sockaddrs.
     hosts: list[str] = []
     for info in infos:
         sockaddr = info[4]
@@ -88,18 +70,7 @@ def _hostname_addresses() -> list[str]:
 
 
 def local_addresses(*, include_loopback: bool = False) -> list[LocalAddress]:
-    """Direcciones por las que el nodo puede ser alcanzado, ordenadas.
-
-    El orden es: privadas IPv4 primero (las que sirven para un grupo de amigos
-    en la misma red), después IPv6, y al final loopback.
-
-    Usa `socket.getaddrinfo` con el hostname de la máquina: funciona en las cuatro
-    plataformas sin dependencias nativas. No enumera todas las interfaces del
-    sistema — para eso haría falta `psutil` o `netifaces`, y una dependencia
-    nativa en un proyecto que se tiene que instalar en un celular no vale la
-    pena. Cuando `getaddrinfo` no devuelve nada, se cae a la ruta que devuelve
-    la IP de la interfaz de salida.
-    """
+    """Reachable addresses, sorted; stdlib-only with outbound-interface fallback."""
     candidates = [raw for raw in _hostname_addresses() if raw]
 
     if not candidates:
@@ -121,17 +92,12 @@ def local_addresses(*, include_loopback: bool = False) -> list[LocalAddress]:
 
 
 def _fallback_addresses() -> list[str]:
-    """Dirección de la interfaz de salida, cuando el hostname no resuelve.
-
-    Se conecta un socket UDP sin enviar nada: el sistema elige la ruta pero no
-    se genera tráfico. Es el truco estándar para "cuál es mi IP" sin depender de
-    un servicio externo.
-    """
+    """Outbound-interface IP via a no-traffic UDP connect."""
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     try:
         sock.settimeout(0.2)
-        # No se envía nada: solo se abre la conexión para que el SO elija la ruta.
-        sock.connect(("192.0.2.1", 9))  # TEST-NET-1, reservado y no enrutable
+        # No traffic sent; connect only selects the route.
+        sock.connect(("192.0.2.1", 9))  # TEST-NET-1, reserved and unroutable
         return [sock.getsockname()[0]]
     except OSError:
         return []
@@ -140,13 +106,7 @@ def _fallback_addresses() -> list[str]:
 
 
 def _sort_key(address: LocalAddress) -> tuple[int, int, int]:
-    """Ordena: IPv4 privada > IPv6 privada > pública > loopback.
-
-    Dentro de un mismo grupo el orden es por valor de IP, que es estable y
-    determinista. **No** se intenta adivinar cuál interfaz es la mejor: eso no se
-    puede saber sin enumerar las interfaces, y equivocarse es peor que mostrar
-    todas. Para eso está `candidates`; `recommended` es solo el primer elemento.
-    """
+    """Private IPv4 > private IPv6 > public > loopback; stable by IP value."""
     if address.loopback:
         priority = 3
     elif address.private:
@@ -156,7 +116,7 @@ def _sort_key(address: LocalAddress) -> tuple[int, int, int]:
 
     try:
         numeric = int(ip_address(address.host))
-    except ValueError:  # pragma: no cover - _describe ya filtró las inválidas
+    except ValueError:  # pragma: no cover - _describe already filtered invalid ones
         numeric = 0
 
     return (priority, 0 if address.family == "ipv4" else 1, numeric)

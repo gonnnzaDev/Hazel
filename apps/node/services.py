@@ -1,16 +1,6 @@
-"""Servicios del nodo: los grupos y sus procesos.
+"""Node services: groups and their processes.
 
-Acá vive el nexo entre la base y el supervisor de procesos. La regla es una:
-
-> El estado de un grupo en la base y el estado de su proceso tienen que
-> coincidir.
-
-Si divergen, el dueño ve algo que no es cierto. Si el grupo dice `active` y el
-proceso murió, comparte un puerto donde no entra nadie. Si dice `inactive` y el
-proceso vive, un puerto queda ocupado sin que nadie lo sepa.
-
-Por eso **la base se escribe después de que el proceso levantó**. Si el proceso
-no arrancó, el grupo queda inactivo y no se anuncia como disponible.
+Invariant: DB state must match process state; DB is written only after the process is up.
 """
 
 from __future__ import annotations
@@ -32,23 +22,12 @@ from core.ports import next_available_port
 
 logger = logging.getLogger(__name__)
 
-#: Cuánto se espera a que un grupo levante antes de darlo por fallido.
+#: Seconds to wait for a group process to become ready.
 GROUP_READY_TIMEOUT_SECONDS = 20.0
 
 
 def supervisor_from(request: Any) -> Any:
-    """Saca el supervisor del estado de la app.
-
-    Vive en `app.state` porque pertenece al ciclo de vida del proceso, no a la
-    request. Un proceso de grupo no lo tiene: por eso elevar o apagar un grupo
-    desde el proceso equivocado da un error claro en vez de un `None` críptico.
-
-    Se lee de `request.app.state` y **no** de `request.state`: en la versión de
-    Starlette que usa el proyecto, `request.state` es un `State` propio que no
-    delega en `app.state`. Escribiendo `request.state.supervisor` el atributo
-    queda invisible para el resto de la app y el endpoint responde siempre
-    "este proceso no es el nodo".
-    """
+    """Get supervisor from app.state; fails outside the node process. Uses request.app.state."""
     supervisor = getattr(getattr(request.app, "state", None), "supervisor", None)
     if supervisor is None:
         raise ConflictError(
@@ -60,23 +39,18 @@ def supervisor_from(request: Any) -> Any:
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Puertos
+# Ports
 # ──────────────────────────────────────────────────────────────────────────────
 
 
 async def _all_servers(session: Any) -> list[Server]:
-    """Todos los grupos registrados en este nodo."""
+    """All groups registered on this node."""
     servers, _ = await list_servers(session, limit=1000, offset=0)
     return servers
 
 
 def _reserved_ports(servers: list[Server]) -> set[int]:
-    """Puertos que ya tienen un grupo registrado.
-
-    Incluye los inactivos: un grupo apagado conserva su puerto para cuando lo
-    vuelvan a encender, así que lo sigue reservando. Si no, dos grupos podrían
-    apuntar al mismo puerto y el segundo no levantaría nunca.
-    """
+    """Ports held by registered groups, including inactive ones (port stays reserved)."""
     return {s.bind_port for s in servers if s.bind_port is not None}
 
 
@@ -87,16 +61,7 @@ async def _allocate_port(
     preferred: int | None = None,
     ignoring: set[RecordId] | None = None,
 ) -> int | None:
-    """Un puerto libre para un grupo.
-
-    Se combinan las dos fuentes de conflicto: los puertos registrados en la base
-    (para que dos grupos del mismo nodo no choquen) y los que ya tienen proceso
-    vivo (por si la base quedó desfasada y alguien spunkeó un proceso a mano).
-
-    El supervisor se pasa explícitamente y no se busca en la sesión a propósito:
-    los services reciben lo que necesitan como argumento, no lo van a buscar de
-    la.request. Así siguen siendo testables sin FastAPI.
-    """
+    """Find a free group port, avoiding DB-registered and live-process ports."""
     servers = await _all_servers(session)
     skip = ignoring or set()
     taken = {s.bind_port for s in servers if s.bind_port is not None and s.id not in skip}
@@ -106,20 +71,12 @@ async def _allocate_port(
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Desplegar, encender, apagar, borrar
+# Deploy/start/stop/delete
 # ──────────────────────────────────────────────────────────────────────────────
 
 
 async def create_group(session: Any, supervisor: Any, payload: ServerCreate) -> Server:
-    """Despliega un grupo: levanta su proceso y lo deja funcionando.
-
-    Desplegar **implica encender**, que es la promesa del producto: si el dueño
-    pidió desplegar, el puerto queda abierto y se puede compartir.
-
-    El orden importa. Primero se levanta el proceso y se espera a que responda,
-    recién ahí el grupo queda `active` en la base. Al revés habría una ventana
-    en la que el grupo dice que está activo y su puerto todavía no escucha.
-    """
+    """Deploy a group (deploy implies start). Marks active only after process is ready."""
     slug = normalize_slug(payload.slug)
     if not slug:
         raise ValidationDomainError(
@@ -142,11 +99,7 @@ async def create_group(session: Any, supervisor: Any, payload: ServerCreate) -> 
             code="no_free_port",
         )
 
-    # La fila la arma `apps.servers.services.create_server`, que ya tiene las
-    # reglas de la tabla (slug único, canal por defecto, canales iniciales).
-    # Acá solo se le pasa el puerto que se le asignó. Duplicar esa construcción
-    # sería tener dos lugares donde el modelo puede quedar mal armado, y el
-    # primero que se olvide de un campo rompe el alta sin que ningún test lo vea.
+    # Row built by servers.create_server to keep construction rules in one place.
     server = await servers_services.create_server(session, payload, port=port)
 
     await supervisor.spawn(server.id, port)
@@ -169,11 +122,7 @@ async def create_group(session: Any, supervisor: Any, payload: ServerCreate) -> 
 
 
 async def start_group(session: Any, supervisor: Any, server_id: RecordId) -> Server:
-    """Enciende un grupo apagado.
-
-    Encender uno que ya está encendido es un no-op, no un error: el dueño pone
-    "encender" en su flujo sin consultar el estado previo.
-    """
+    """Start a stopped group; already-running is a no-op."""
     server = await get_server(session, server_id)
 
     if server.status is ServerStatus.DELETED:
@@ -211,14 +160,7 @@ async def start_group(session: Any, supervisor: Any, server_id: RecordId) -> Ser
 
 
 async def stop_group(session: Any, supervisor: Any, server_id: RecordId) -> Server:
-    """Apaga un grupo: baja el proceso y cierra el puerto.
-
-    **No borra nada.** Canales, miembros y mensajes quedan intactos y el grupo
-    vuelve a levantar con todo dentro. Es la promesa central del producto: si
-    apagás tu grupo, lo encontrás igual cuando lo volvés a encender.
-
-    El puerto queda reservado: es el mismo que va a usar cuando lo reencendáis.
-    """
+    """Stop a group without deleting data; port stays reserved."""
     server = await get_server(session, server_id)
 
     await supervisor.terminate(server_id)
@@ -231,12 +173,7 @@ async def stop_group(session: Any, supervisor: Any, server_id: RecordId) -> Serv
 
 
 async def delete_group(session: Any, supervisor: Any, server_id: RecordId) -> None:
-    """Elimina un grupo de forma permanente.
-
-    La única operación destructiva. Primero baja el proceso: si el grupo se
-    borra con el proceso vivo, el puerto queda ocupado hasta que el nodo se
-    reinicie, y el siguiente grupo que lo quiera no lo puede tomar.
-    """
+    """Permanently delete a group; terminate the process first to free the port."""
     server = await get_server(session, server_id)
 
     await supervisor.terminate(server_id)
@@ -247,17 +184,12 @@ async def delete_group(session: Any, supervisor: Any, server_id: RecordId) -> No
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Estado
+# State
 # ──────────────────────────────────────────────────────────────────────────────
 
 
 def process_state(supervisor: Any, server: Server) -> dict[str, object]:
-    """El estado real del proceso de un grupo, para el panel.
-
-    Va aparte del `status` de la base a propósito: uno es lo que el dueño pidió,
-    el otro es lo que está pasando. Mostrar los dos por separado es la única
-    forma de que vea un grupo que se murió sin que el panel le diga que está bien.
-    """
+    """Live process state for the panel; separate from DB status to surface crashes."""
     group = supervisor.status(server.id)
 
     if group is None:
@@ -272,20 +204,14 @@ def process_state(supervisor: Any, server: Server) -> dict[str, object]:
 
 
 def group_address(server: Server) -> dict[str, object]:
-    """La dirección que el dueño comparte para entrar a este grupo.
-
-    A diferencia del nodo, acá el puerto es el del grupo y no hace falta elegir
-    interfaz: es un único puerto y ya está asignado.
-    """
+    """Shareable address for this group (group port + node host)."""
     addresses = local_addresses()
     recommended = addresses[0].host if addresses else None
 
     return {
         "slug": server.slug,
         "port": server.bind_port,
-        # El grupo se alcanza por el puerto del nodo (0.0.0.0 o la IP que el
-        # dueño tenga configurada). No es una columna del grupo: es la
-        # configuración del proceso del nodo.
+        # Host comes from node settings, not a group column.
         "host": get_settings().host,
         "is_reachable": server.status.accepts_traffic,
         "recommended_host": recommended,
@@ -294,11 +220,7 @@ def group_address(server: Server) -> dict[str, object]:
 
 
 def ensure_can_manage(actor_role: int, *, deleting: bool = False) -> None:
-    """Solo el dueño administra los grupos del nodo.
-
-    En Recop el dueño del nodo es el dueño de sus grupos: él los despliega
-    en su máquina, no tiene sentido que otro pueda apagarlos o borrarlos.
-    """
+    """Only node owner manages groups; deleting requires OWNER."""
     if actor_role < Role.ADMIN:
         raise PermissionDeniedError(
             "Necesitás ser administrador para manejar los grupos del nodo.",
@@ -324,15 +246,12 @@ __all__ = [
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Ficha del nodo
+# Node card
 # ──────────────────────────────────────────────────────────────────────────────
 
 
 def node_info() -> dict[str, object]:
-    """Qué es este proceso.
-
-    Lo primero que consulta un cliente para saber a qué se conectó.
-    """
+    """Describe this process; queried first by clients."""
     from core import __version__
 
     settings = get_settings()
@@ -342,21 +261,14 @@ def node_info() -> dict[str, object]:
         "environment": settings.env,
         "bind_host": settings.host,
         "bind_port": settings.port,
-        # Si estamos respondiendo, estamos escuchando. No hay otro estado
-        # observable desde adentro del proceso.
+        # Responding implies listening.
         "is_listening": True,
         "kafka_topic_prefix": settings.kafka_topic_prefix,
     }
 
 
 def node_address() -> dict[str, object]:
-    """La dirección del proceso del nodo: su puerto y las IPs de la máquina.
-
-    El nodo escucha en `0.0.0.0`, que no es una dirección a la que se pueda
-    conectar. Acá se resuelve cuáles de las interfaces sí lo son.
-
-    Los grupos tienen puertos propios; esta dirección es la del panel del dueño.
-    """
+    """Node process address: port plus reachable machine interfaces."""
     settings = get_settings()
     addresses = local_addresses()
 
