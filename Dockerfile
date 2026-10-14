@@ -34,15 +34,14 @@ WORKDIR /src
 # Primero solo los manifiestos: mientras no cambien, esta capa se cachea y las
 # builds following no reinstalan nada.
 COPY pyproject.toml uv.lock README.md ./
-COPY apps/__init__.py ./apps/__init__.py
-COPY core/__init__.py ./core/__init__.py
+
+COPY src/ ./src/
 
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --locked --no-install-project --no-dev
 
 # Ahora sí, el código.
-COPY apps/ ./apps/
-COPY core/ ./core/
+COPY src/ ./src/
 COPY migrations/ ./migrations/
 COPY alembic.ini ./
 
@@ -89,8 +88,7 @@ ENV \
     RECOP_AUTO_MIGRATE=true
 
 COPY --from=builder --chown=recap:recap /opt/venv /opt/venv
-COPY --from=builder --chown=recap:recap /src/apps ./apps
-COPY --from=builder --chown=recap:recap /src/core ./core
+COPY --from=builder --chown=recap:recap /src/src ./src
 COPY --from=builder --chown=recap:recap /src/migrations ./migrations
 COPY --from=builder --chown=recap:recap /src/alembic.ini ./alembic.ini
 

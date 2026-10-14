@@ -205,7 +205,7 @@ tokens**: two different identities, not one person with two profiles.
 
 ### Nickname rules
 
-Centralized in `apps/common/nickname.py`:
+Centralized in `src/common/nickname.py`:
 
 - 2 to 32 characters
 - Only `a-z`, `0-9`, `.`, `_`, `-`

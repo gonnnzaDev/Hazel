@@ -1,6 +1,6 @@
 """Django-style app registry; explicit list keeps migration order deterministic.
 
-New app: create apps/<name>/, then add it to INSTALLED_APPS.
+New module: create src/<name>/, then add it to INSTALLED_APPS.
 """
 
 from __future__ import annotations
@@ -9,11 +9,11 @@ from dataclasses import dataclass
 
 from fastapi import APIRouter
 
-from apps.common.api.router import router as common_router
-from apps.identity.api.router import router as identity_router
-from apps.node.api.router import router as node_router
-from apps.servers.api.calls import router as calls_router
-from apps.servers.api.router import router as servers_router
+from common.view import router as common_router
+from identity.view import router as identity_router
+from node.view import router as node_router
+from servers.calls_view import router as calls_router
+from servers.view import router as servers_router
 
 
 @dataclass(frozen=True, slots=True)

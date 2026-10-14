@@ -10,10 +10,10 @@ from typing import Annotated
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from apps.common import nickname as nick
-from apps.common.types import RecordId
-from apps.node.schemas import NodeAddress
-from apps.servers.states import ServerStatus
+from common import nickname as nick
+from common.types import RecordId
+from node.schemas import NodeAddress
+from servers.states import ServerStatus
 
 ServerName = Annotated[str, Field(min_length=2, max_length=64)]
 ServerSlug = Annotated[str, Field(min_length=2, max_length=64)]

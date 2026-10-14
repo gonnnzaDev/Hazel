@@ -1,6 +1,8 @@
-"""Server lifecycle business logic (no FastAPI; raises domain errors).
+"""Server persistence: queries and writes without lifecycle decisions.
 
-Deactivating preserves all data; deleting is the only destructive op.
+Lifecycle rules (transitions, deletion) live in `servers.service`, which
+calls into here. Construction invariants (single default channel) are
+enforced here so every writer builds valid rows.
 """
 
 from __future__ import annotations
@@ -14,23 +16,15 @@ from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from apps.common.types import RecordId, new_id, utcnow
-from apps.servers.models import Channel, ChannelKind, Message, Server
-from apps.servers.schemas import ChannelCreate, ServerCreate, ServerUpdate
-from apps.servers.states import ServerStatus, can_transition
-from core.api.errors import (
-    ConflictError,
-    NotFoundError,
-    ServerInactiveError,
-    ValidationDomainError,
-)
+from common.types import RecordId, new_id, utcnow
+from core.api.errors import NotFoundError, ValidationDomainError
+from servers.model import Channel, ChannelKind, Message, Server
+from servers.schemas import ChannelCreate, ServerUpdate
+from servers.states import ServerStatus
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_CHANNEL_NAME = "general"
-
-MIN_SLUG_LENGTH = 2
-MAX_SLUG_LENGTH = 64
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -113,11 +107,12 @@ async def resolve_by_slug(session: AsyncSession, slug: str) -> Server:
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Writes
+# Construction helpers and plain writes
 # ──────────────────────────────────────────────────────────────────────────────
 
 
-def _build_channels(payload_channels: list[ChannelCreate]) -> list[Channel]:
+def build_channels(payload_channels: list[ChannelCreate]) -> list[Channel]:
+    """Build initial channel rows from the creation payload."""
     channels: list[Channel] = []
     for raw in payload_channels:
         try:
@@ -141,7 +136,7 @@ def _build_channels(payload_channels: list[ChannelCreate]) -> list[Channel]:
     return channels
 
 
-def _ensure_default_channel(server: Server) -> None:
+def ensure_default_channel(server: Server) -> None:
     """Ensure exactly one default channel."""
     if not server.channels:
         server.channels.append(
@@ -165,43 +160,6 @@ def _ensure_default_channel(server: Server) -> None:
         server.channels[0].is_default = True
 
 
-async def create_server(session: AsyncSession, payload: ServerCreate, *, port: int) -> Server:
-    """Register a new group; the caller assigns the port. Starts CREATING until live."""
-    slug = normalize_slug(payload.slug)
-    if len(slug) < MIN_SLUG_LENGTH or len(slug) > MAX_SLUG_LENGTH:
-        raise ValidationDomainError(
-            "El identificador del servidor debe tener entre "
-            f"{MIN_SLUG_LENGTH} y {MAX_SLUG_LENGTH} caracteres.",
-            code="invalid_slug",
-            extra={"slug": payload.slug},
-        )
-
-    if await slug_taken(session, slug):
-        raise ConflictError(
-            f"El identificador '{slug}' ya está en uso.",
-            code="slug_taken",
-            extra={"slug": slug},
-        )
-
-    server = Server(
-        id=new_id(),
-        name=payload.name.strip(),
-        slug=slug,
-        description=payload.description,
-        status=ServerStatus.CREATING,
-        bind_port=port,
-        max_members=payload.max_members,
-        channels=_build_channels(payload.channels),
-    )
-
-    _ensure_default_channel(server)
-    session.add(server)
-    await session.flush()
-
-    logger.info("servidor registrado slug=%s puerto=%s", server.slug, port)
-    return server
-
-
 async def update_server(session: AsyncSession, server: Server, payload: ServerUpdate) -> Server:
     """Apply partial config changes."""
     changes = payload.model_dump(exclude_unset=True)
@@ -213,87 +171,11 @@ async def update_server(session: AsyncSession, server: Server, payload: ServerUp
     return server
 
 
-async def activate_server(session: AsyncSession, server: Server) -> Server:
-    """Activate the server; already-active is a no-op, not an error."""
-    if server.status is ServerStatus.ACTIVE:
-        server.last_heartbeat_at = utcnow()
-        await session.flush()
-        return server
-
-    if server.status is ServerStatus.DELETED:
-        raise ConflictError(
-            "Este servidor fue eliminado y no se puede volver a activar.",
-            code="server_deleted",
-            extra={"server_id": str(server.id)},
-        )
-
-    if not can_transition(server.status, ServerStatus.ACTIVE):
-        raise ConflictError(
-            f"No se puede activar un servidor en estado '{server.status.value}'.",
-            code="invalid_state_transition",
-            extra={"current": server.status.value, "target": ServerStatus.ACTIVE.value},
-        )
-
-    server.status = ServerStatus.ACTIVE
-    server.last_heartbeat_at = utcnow()
-    await session.flush()
-
-    logger.info("servidor activado slug=%s", server.slug)
-    return server
-
-
-async def deactivate_server(session: AsyncSession, server: Server) -> Server:
-    """Deactivate and close the port; preserves all data for reactivation."""
-    if server.status is ServerStatus.INACTIVE:
-        return server
-
-    if server.status is ServerStatus.DELETED:
-        raise ConflictError(
-            "Este servidor ya fue eliminado.",
-            code="server_deleted",
-            extra={"server_id": str(server.id)},
-        )
-
-    if not can_transition(server.status, ServerStatus.INACTIVE):
-        raise ConflictError(
-            f"No se puede desactivar un servidor en estado '{server.status.value}'.",
-            code="invalid_state_transition",
-            extra={"current": server.status.value, "target": ServerStatus.INACTIVE.value},
-        )
-
-    server.status = ServerStatus.INACTIVE
-    await session.flush()
-
-    logger.info("servidor desactivado slug=%s", server.slug)
-    return server
-
-
 async def heartbeat(session: AsyncSession, server: Server, *, at: datetime | None = None) -> Server:
     """Record liveness; distinguishes intentional stop from crash."""
     server.last_heartbeat_at = at or utcnow()
     await session.flush()
     return server
-
-
-async def delete_server(session: AsyncSession, server: Server) -> None:
-    """Permanently delete the server (the only destructive op); channels cascade."""
-    if server.status.is_terminal:
-        raise ConflictError(
-            "Este servidor ya fue eliminado.",
-            code="server_deleted",
-            extra={"server_id": str(server.id)},
-        )
-
-    if not can_transition(server.status, ServerStatus.DELETED):
-        raise ConflictError(
-            f"No se puede eliminar un servidor en estado '{server.status.value}'.",
-            code="invalid_state_transition",
-            extra={"current": server.status.value, "target": ServerStatus.DELETED.value},
-        )
-
-    slug = server.slug
-    await session.delete(server)
-    logger.info("servidor eliminado slug=%s", slug)
 
 
 async def mark_all_inactive(session: AsyncSession) -> int:
@@ -312,21 +194,6 @@ async def mark_all_inactive(session: AsyncSession) -> int:
             count,
         )
     return count
-
-
-# ──────────────────────────────────────────────────────────────────────────────
-# Guards
-# ──────────────────────────────────────────────────────────────────────────────
-
-
-def ensure_active(server: Server) -> None:
-    """Raise a clear error unless the server accepts traffic."""
-    if not server.status.accepts_traffic:
-        raise ServerInactiveError(
-            f"El servidor está {server.status.value}. No acepta conexiones hasta "
-            f"que su dueño lo vuelva a activar.",
-            extra={"server_id": str(server.id), "status": server.status.value},
-        )
 
 
 async def create_message(
