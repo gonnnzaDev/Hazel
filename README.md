@@ -59,17 +59,6 @@ uv run python -m core
 
 ## Cómo se usa
 
-### Con la app de escritorio
-
-```bash
-make front
-```
-
-Desde ahí creás tus servidores, los encendés y apagás, copiás la dirección para
-tus amigos y chateás. Ver [`front/README.md`](front/README.md).
-
-### Desde la terminal
-
 Encendé todo:
 
 ```bash
