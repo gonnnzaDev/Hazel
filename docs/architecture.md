@@ -1,4 +1,4 @@
-# Recop Architecture
+# Hazel Architecture
 
 Design-decision document. Each decision is written with its *why* so future
 conversations have context and everything isn't reverted every time a new
@@ -11,7 +11,7 @@ idea shows up.
 
 ## 1. The product: what a "server" is
 
-In Recop a **server** is not an abstract concept in the cloud. It is a process
+In Hazel a **server** is not an abstract concept in the cloud. It is a process
 running on someone's PC and listening on a port of that machine.
 
 ```
@@ -46,8 +46,8 @@ nickname on two servers are two unrelated people.
 
 **Why:**
 
-- Recop's mental model is "my friend hosts this at home". A global registry
-  implies a central authority, which is exactly what Recop removes.
+- Hazel's mental model is "my friend hosts this at home". A global registry
+  implies a central authority, which is exactly what Hazel removes.
 - It lets someone join a stranger's server frictionless: open the port,
   pick a nickname, join.
 - It reduces attack surface: no passwords to leak, no brute force to implement.
@@ -105,13 +105,13 @@ Kafka provides:
 This is a real contradiction with the self-hosting goal and must be resolved
 before the product is used. Options, **pending your decision**:
 
-1. **Embedded mode**: Kafka runs inside the same Recop node, in a separate
+1. **Embedded mode**: Kafka runs inside the same Hazel node, in a separate
    process the node launches and manages. The owner never sees it; if something
    fails, the node reports it.
 2. **Transport with abstraction**: the chat bus is an interface with a Kafka
    implementation and a local implementation. Kafka is the "real" mode
    (multi-user, several nodes), local mode is the default for a single owner.
-3. **Pure Kafka**: the owner must run Kafka before Recop. Simple to implement,
+3. **Pure Kafka**: the owner must run Kafka before Hazel. Simple to implement,
    high startup friction.
 
 The chat PR implementation will expose the bus as an **interface**, so the

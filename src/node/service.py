@@ -66,7 +66,7 @@ async def create_group(session: Any, supervisor: Any, payload: ServerCreate) -> 
     if port is None:
         raise ConflictError(
             "No free ports left for another group. "
-            "Raise RECOP_GROUP_PORT_END in the .env if you need more.",
+            "Raise HAZEL_GROUP_PORT_END in the .env if you need more.",
             code="no_free_port",
         )
 
@@ -208,7 +208,7 @@ def node_info() -> dict[str, object]:
 
     settings = get_settings()
     return {
-        "service": "recop-node",
+        "service": "hazel-node",
         "version": __version__,
         "environment": settings.env,
         "bind_host": settings.host,

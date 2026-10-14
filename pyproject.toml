@@ -1,5 +1,5 @@
 [project]
-name = "recop"
+name = "hazel"
 version = "0.1.0"
 description = "Chat autoservido. Tu servidor, tu máquina, tu puerto."
 readme = "README.md"
@@ -38,7 +38,7 @@ packages = ["src/common", "src/config", "src/core", "src/identity", "src/node", 
 # entrypoints
 # ──────────────────────────────────────────────────────────────────────────────
 [project.scripts]
-recop-api = "core.cli:run"
+hazel-api = "core.cli:run"
 
 # ──────────────────────────────────────────────────────────────────────────────
 # pytest

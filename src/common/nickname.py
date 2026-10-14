@@ -18,7 +18,7 @@ RESERVED = frozenset(
         "todos",
         "here",
         "aqui",
-        "recop",
+        "hazel",
         "system",
         "sistema",
         "root",

@@ -10,13 +10,13 @@ from sqlalchemy import select
 from starlette.websockets import WebSocketDisconnect
 
 from common.types import RecordId
+from config.bdd_config.bdd_config import session_scope
 from core.api.deps import SettingsDep
 from core.api.errors import (
     AuthenticationError,
     NotFoundError,
     PermissionDeniedError,
 )
-from core.db.session import session_scope
 from identity import service as identity_service
 from identity.deps import CurrentMember
 from servers import repository as servers_repository

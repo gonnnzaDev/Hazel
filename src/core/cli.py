@@ -19,8 +19,8 @@ def _setup_logging(settings: Settings, role: str) -> None:
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="recop",
-        description="Recop node",
+        prog="hazel",
+        description="Hazel node",
     )
     parser.add_argument("--host", default=None, help="Interface to listen on")
     parser.add_argument("--port", type=int, default=None, help="Port to listen on")

@@ -15,7 +15,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from common.types import RecordId, new_id, utcnow
-from core.db.base import Base
+from config.bdd_config.bdd_config import Base
 from identity.roles import Role
 
 if TYPE_CHECKING:

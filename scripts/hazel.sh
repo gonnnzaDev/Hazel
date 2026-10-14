@@ -1,17 +1,17 @@
 #!/usr/bin/env bash
 # ─────────────────────────────────────────────────────────────────────────────
-# Recop — everyday commands
+# Hazel — everyday commands
 #
-#     ./scripts/recop.sh <command>
+#     ./scripts/hazel.sh <command>
 #
 # The Makefile equivalent for anyone without make (Windows, Android,
 # or simply anyone who doesn't have it installed). Each command does the same
 # as its Makefile target, so both work.
 #
-#     ./scripts/recop.sh up        # start PostgreSQL and Kafka
-#     ./scripts/recop.sh api       # start the node
-#     ./scripts/recop.sh check     # lint + format + types + tests
-#     ./scripts/recop.sh help      # show all commands
+#     ./scripts/hazel.sh up        # start PostgreSQL and Kafka
+#     ./scripts/hazel.sh api       # start the node
+#     ./scripts/hazel.sh check     # lint + format + types + tests
+#     ./scripts/hazel.sh help      # show all commands
 # ─────────────────────────────────────────────────────────────────────────────
 
 set -euo pipefail
@@ -38,10 +38,10 @@ need_docker() {
 }
 
 wait_for_postgres() {
-    local user="recop"
+    local user="hazel"
     if [ -f .env ]; then
         user="$(awk -F= '/^POSTGRES_USER=/ {print $2}' .env | head -1)"
-        [ -n "$user" ] || user="recop"
+        [ -n "$user" ] || user="hazel"
     fi
     printf '    waiting for PostgreSQL...'
     for _ in $(seq 1 60); do
@@ -74,7 +74,7 @@ cmd_downgrade()  { uv run alembic downgrade "${1:--1}"; }
 
 cmd_revision() {
     if [ -z "${1:-}" ]; then
-        printf 'usage: ./scripts/recop.sh revision "message"\n' >&2
+        printf 'usage: ./scripts/hazel.sh revision "message"\n' >&2
         exit 1
     fi
     uv run alembic revision --autogenerate -m "$1"
@@ -86,9 +86,9 @@ cmd_typecheck() { uv run mypy src; }
 cmd_test()      { uv run pytest "$@"; }
 
 cmd_test_integration() {
-    if [ -z "${RECOP_TEST_DATABASE_URL:-}" ]; then
-        printf 'Missing RECOP_TEST_DATABASE_URL. E.g.:\n' >&2
-        printf '  ./scripts/recop.sh test-integration RECOP_TEST_DATABASE_URL=postgresql+asyncpg://recop:recop@localhost:5432/recop_test\n' >&2
+    if [ -z "${HAZEL_TEST_DATABASE_URL:-}" ]; then
+        printf 'Missing HAZEL_TEST_DATABASE_URL. E.g.:\n' >&2
+        printf '  ./scripts/hazel.sh test-integration HAZEL_TEST_DATABASE_URL=postgresql+asyncpg://hazel:hazel@localhost:5432/hazel_test\n' >&2
         exit 1
     fi
     uv run pytest "$@"
@@ -99,7 +99,7 @@ cmd_check() {
 }
 
 cmd_health() {
-    port="$(awk -F= '/^RECOP_PORT=/ {print $2}' .env 2>/dev/null | head -1)"
+    port="$(awk -F= '/^HAZEL_PORT=/ {print $2}' .env 2>/dev/null | head -1)"
     port="${port:-7272}"
     printf 'node health on localhost:%s\n\n' "$port"
     curl -sS "http://localhost:${port}/health" && printf '\n\n' || printf 'the node is not responding on port %s\n' "$port"
@@ -108,7 +108,7 @@ cmd_health() {
 
 cmd_help() {
     cat <<'EOF'
-Recop — commands
+Hazel — commands
 
   Development
     up                Start PostgreSQL and Kafka
@@ -138,8 +138,8 @@ Recop — commands
     help              This help
 
 Examples
-    ./scripts/recop.sh up
-    ./scripts/recop.sh test-integration RECOP_TEST_DATABASE_URL=postgresql+asyncpg://recop:recop@localhost:5432/recop_test
+    ./scripts/hazel.sh up
+    ./scripts/hazel.sh test-integration HAZEL_TEST_DATABASE_URL=postgresql+asyncpg://hazel:hazel@localhost:5432/hazel_test
 EOF
 }
 
