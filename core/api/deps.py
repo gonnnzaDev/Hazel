@@ -1,4 +1,4 @@
-"""Dependencias de FastAPI compartidas."""
+"""Shared FastAPI dependencies."""
 
 from __future__ import annotations
 
@@ -13,12 +13,7 @@ from core.db.session import get_session_maker
 
 
 async def db_session() -> AsyncIterator[AsyncSession]:
-    """Entrega una sesión por request, con commit/rollback gestionados.
-
-    La transacción se confirma al responder exitosamente y se revierte ante
-    cualquier excepción, de modo que un error en el service nunca deja datos
-    a medio escribir.
-    """
+    """Per-request session; commits on success, rolls back on error."""
     async with get_session_maker()() as session:
         try:
             yield session

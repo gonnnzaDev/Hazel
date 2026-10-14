@@ -1,7 +1,6 @@
-"""Contratos de entrada y salida del servidor.
+"""Server API input/output contracts.
 
-Son el contrato público de la API. Un cliente mobile genera sus tipos desde acá,
-así que cambiar un schema es un cambio de API y tiene que ser deliberado.
+Schemas are the public API: changing one is an API change.
 """
 
 from __future__ import annotations
@@ -18,13 +17,7 @@ from apps.servers.states import ServerStatus
 
 ServerName = Annotated[str, Field(min_length=2, max_length=64)]
 ServerSlug = Annotated[str, Field(min_length=2, max_length=64)]
-"""Identificador del servidor, en texto libre.
-
-El schema NO exige que venga normalizado: acepta `"Mi Casa"` y el service lo
-convierte en `mi-casa`. Obligar al cliente a mandar el slug ya normalizado
-duplica una regla de negocio en el frontend y hace la API más estricta sin
-ganancia. La validación real se hace sobre el valor normalizado, en el service.
-"""
+"""Free-text server identifier; the service normalizes it (e.g. "Mi Casa" -> "mi-casa")."""
 OwnerNickname = Annotated[str, Field(min_length=nick.MIN_LENGTH, max_length=nick.MAX_LENGTH)]
 
 
@@ -37,7 +30,7 @@ class ChannelBase(BaseModel):
     @field_validator("name")
     @classmethod
     def _valid_name(cls, value: str) -> str:
-        """El nombre del canal se muestra en la UI: no admitimos espacios sueltos."""
+        """Channel names render in the UI: no blank names."""
         normalized = value.strip()
         if not normalized:
             raise ValueError("el nombre del canal no puede estar vacío")
@@ -71,11 +64,7 @@ class ServerBase(BaseModel):
 
 
 class ServerCreate(ServerBase):
-    """Payload para crear un servidor.
-
-    `owner_nickname` es el nickname local de quien está levantando el servidor en
-    su máquina. No es una cuenta: es la identidad **dentro** de este servidor.
-    """
+    """Server creation payload; `owner_nickname` is the local in-server identity, not an account."""
 
     owner_nickname: OwnerNickname
     max_members: Annotated[int, Field(default=50, ge=1, le=10_000)]
@@ -88,7 +77,7 @@ class ServerCreate(ServerBase):
 
 
 class ServerUpdate(BaseModel):
-    """Cambios parciales sobre un servidor existente."""
+    """Partial update to an existing server."""
 
     name: ServerName | None = None
     description: Annotated[str | None, Field(default=None, max_length=1000)]
@@ -96,10 +85,7 @@ class ServerUpdate(BaseModel):
 
 
 class ServerRead(ServerBase):
-    """Representación pública de un servidor.
-
-    No expone `owner_nickname`: es información interna del dueño.
-    """
+    """Public server representation (no owner internals)."""
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -113,16 +99,12 @@ class ServerRead(ServerBase):
 
     @property
     def is_accepting_connections(self) -> bool:
-        """Si el servidor acepta tráfico ahora mismo."""
+        """Whether the server accepts traffic right now."""
         return self.status.accepts_traffic
 
 
 class ServerAddress(BaseModel):
-    """La dirección por la que se entra a un servidor concreto.
-
-    Todos los servidores de un nodo comparten el puerto del nodo. Lo que cambia
-    es a cuál se llega, y eso lo decide el `slug`.
-    """
+    """Join address for a server; servers share the node port, the slug routes."""
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -130,24 +112,18 @@ class ServerAddress(BaseModel):
     slug: str
     server_name: str
     is_active: bool
-    """Si el servidor acepta tráfico ahora mismo."""
 
     node: NodeAddress
-    """Dirección del nodo: puerto, interfaces candidatas y cuál se recomienda."""
 
     @property
     def share_hint(self) -> str | None:
-        """La dirección para compartir, si se puede determinar.
-
-        Es None si el nodo está en una máquina donde no se pudo resolver ninguna
-        IP (por ejemplo, un contenedor sin red o una máquina sin interfaces).
-        """
+        """Shareable address, or None when the node has no resolvable IP."""
         recommended = self.node.recommended
         return f"{recommended}:{self.node.port}" if recommended else None
 
 
 class ServerListResponse(BaseModel):
-    """Listado paginado de servidores."""
+    """Paginated server listing."""
 
     items: list[ServerRead]
     total: int
@@ -156,7 +132,7 @@ class ServerListResponse(BaseModel):
 
 
 class MessageCreate(BaseModel):
-    """Payload para crear un mensaje de texto."""
+    """Payload for creating a text message."""
 
     content: Annotated[str, Field(min_length=1, max_length=2000)]
 
@@ -164,7 +140,7 @@ class MessageCreate(BaseModel):
 
 
 class MessageRead(BaseModel):
-    """Un mensaje de texto mostrado al cliente."""
+    """A text message shown to the client."""
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -175,7 +151,7 @@ class MessageRead(BaseModel):
 
 
 class MessageListResponse(BaseModel):
-    """Listado paginado de mensajes."""
+    """Paginated message listing."""
 
     items: list[MessageRead]
     total: int

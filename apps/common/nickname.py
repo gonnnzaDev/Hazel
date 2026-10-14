@@ -1,11 +1,6 @@
-"""Reglas del Nickname: la única forma de identidad en Recop.
+"""Nickname rules: the only identity in Recop.
 
-Decisión de producto: **no hay cuentas globales**. Una persona es un nickname
-dentro de un servidor. El mismo nickname en dos servidores distintos son dos
-personas distintas y no se relacionan entre sí.
-
-Este módulo centraliza las reglas para que la validación sea idéntica al crear
-un servidor, al unirse a uno y al mostrar un perfil.
+Nicknames are per-server; the same string on two servers means two unrelated people.
 """
 
 from __future__ import annotations
@@ -15,14 +10,13 @@ import unicodedata
 
 from core.api.errors import ValidationDomainError
 
-# Alfabeto pensado para tipear rápido: letras, números, guion bajo, guion medio
-# y punto. Todo en minúsculas: los nicknames no distinguen mayúsculas.
+# Lowercase alphanumerics plus ._-; nicknames are case-insensitive.
 NICKNAME_PATTERN = re.compile(r"^[a-z0-9][a-z0-9._-]*$")
 
 MIN_LENGTH = 2
 MAX_LENGTH = 32
 
-# Nicknames reservados: no pueden colisionar con menciones ni permisos del sistema.
+# Reserved to avoid collisions with mentions/system names.
 RESERVED = frozenset(
     {
         "admin",
@@ -44,23 +38,16 @@ RESERVED = frozenset(
 
 
 def normalize(raw: str) -> str:
-    """Normaliza la forma canónica de un nickname.
-
-    Quita acentos, pasa a minúsculas y colapsa espacios a guion bajo. Asi
-    `"  José  Luis "` y `"jose_luis"` son el mismo nickname.
-    """
+    """Return canonical form: lowercase, de-accented, spaces collapsed to underscores."""
     decomposed = unicodedata.normalize("NFKD", raw.strip().casefold())
     without_accents = "".join(ch for ch in decomposed if not unicodedata.combining(ch))
-    # Cualquier cosa que no sea alfanumérico o separador se descarta.
+    # Drop anything outside the allowed alphabet.
     cleaned = re.sub(r"[^a-z0-9._-]+", "_", without_accents)
     return cleaned.strip("._-")
 
 
 def validate(nickname: str) -> str:
-    """Valida y normaliza un nickname. Devuelve la forma canónica.
-
-    Lanza `ValidationDomainError` si no cumple las reglas.
-    """
+    """Validate and return canonical form. Raises ValidationDomainError."""
     normalized = normalize(nickname)
 
     if len(normalized) < MIN_LENGTH:
@@ -94,7 +81,7 @@ def validate(nickname: str) -> str:
 
 
 def is_valid(nickname: str) -> bool:
-    """Versión booleana de `validate`, para chequeos rápidos."""
+    """Boolean version of validate."""
     try:
         validate(nickname)
     except ValidationDomainError:

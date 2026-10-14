@@ -1,4 +1,4 @@
-"""Capa API compartida: routers, errores y dependencias."""
+"""Shared API layer: routers, errors, dependencies."""
 
 from fastapi import APIRouter
 

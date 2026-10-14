@@ -1,7 +1,6 @@
-"""Núcleo de Recop: configuración, infraestructura y app factory.
+"""Recop core: config, infrastructure, app factory.
 
-Este paquete no contiene lógica de negocio. Todo lo específico del producto vive
-bajo `apps/`.
+No business logic here; product code lives under `apps/`.
 """
 
 __all__ = ["__version__"]

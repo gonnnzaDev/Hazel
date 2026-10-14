@@ -1,12 +1,8 @@
-"""Identidad: cómo es una persona dentro de un servidor.
+"""Identity: who someone is inside a server.
 
-Acá vive la idea central del producto: **no hay cuentas globales**. Alguien abre
-el puerto de un nodo, elige un nickname y entra. Sin email, sin password, sin
-registro, sin cuenta global.
-
-El mismo nickname en dos servidores distintos son dos personas sin relación entre
-sí. Por eso el token está scopeado al servidor: el token de Ana en `casa-de-luis`
-no sirve en `gym-de-martes`. No es un detalle de implementación, es el modelo.
+No global accounts. Someone opens a node port, picks a nickname, joins.
+Same nickname on two servers = two unrelated people, so tokens are
+server-scoped by design.
 """
 
 __all__: list[str] = []

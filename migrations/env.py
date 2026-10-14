@@ -1,10 +1,7 @@
-"""Entorno de Alembic para Recop.
+"""Alembic environment for Recop.
 
-Las migraciones corren con el driver síncrono (psycopg) porque Alembic tiene
-soporte async limitado; la app en runtime usa asyncpg.
-
-La URL no está en `alembic.ini`: se lee de la configuración de la app para que
-exista una sola fuente de verdad.
+Migrations run on the sync driver (psycopg); runtime uses asyncpg.
+URL comes from app settings (single source of truth, not `alembic.ini`).
 """
 
 from __future__ import annotations
@@ -17,17 +14,16 @@ from pathlib import Path
 from alembic import context
 from sqlalchemy import engine_from_config, pool
 
-# El directorio raíz del repo, para que `core` y `apps` sean importables.
+# Repo root so `core` and `apps` are importable.
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from core.config import get_settings
 from core.db.base import Base
 from core.registry import app_registry
 
-# Importar cada app registrada garantiza que todos los modelos estén en
-# `Base.metadata` antes de autogenerar. El orden lo fija `INSTALLED_APPS`.
+# Import registered apps so models land in `Base.metadata` for autogenerate.
 for _app_name in app_registry.installed:
-    # Una app sin modelos todavía no expone `models.py`. Se va agregando con el tiempo.
+    # Skip apps without `models.py` yet.
     with suppress(ModuleNotFoundError):
         __import__(f"apps.{_app_name}.models")
 
@@ -40,12 +36,12 @@ target_metadata = Base.metadata
 
 
 def get_url() -> str:
-    """URL de conexión para migraciones."""
+    """Connection URL for migrations."""
     return get_settings().sync_database_url
 
 
 def run_migrations_offline() -> None:
-    """Genera SQL sin conectarse a la base."""
+    """Emit SQL without connecting to the DB."""
     context.configure(
         url=get_url(),
         target_metadata=target_metadata,
@@ -59,7 +55,7 @@ def run_migrations_offline() -> None:
 
 
 def run_migrations_online() -> None:
-    """Aplica las migraciones contra una base real."""
+    """Apply migrations against a live DB."""
     section = config.get_section(config.config_ini_section, {})
     section["sqlalchemy.url"] = get_url()
 

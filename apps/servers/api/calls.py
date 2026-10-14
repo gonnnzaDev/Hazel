@@ -1,37 +1,6 @@
-"""Endpoints de llamadas: el WebSocket de señalización y el listado de sala.
+"""Call endpoints: signaling WebSocket plus room listing.
 
-La capa HTTP ↔ servicio. No hay reglas de negocio acá: la sala, la concurrencia
-y los mensajes viven en `apps.servers.calls`. Este módulo solo traduce.
-
-## El WebSocket
-
-    ws://host/api/v1/servers/{server_id}/channels/{channel_id}/call?token=...
-
-El handshake lleva el token por query string porque ni el navegador ni los
-clientes mobile permiten headers custom al abrir un WebSocket. Es la misma
-restricción que ya maneja `apps.identity.deps.member_from_query`.
-
-Lo que entra y sale por este socket es señalización: descripciones SDP y
-candidatos ICE que el servidor reenvía entre pares, más anuncios de sala
-(entró, salió, cambió el micrófono). El audio y el vídeo **no pasan por acá**:
-viajan directo entre los navegadores por WebRTC.
-
-## El contrato de mensajes
-
-Cliente → servidor:
-
-    {"type": "offer"|"answer", "to": "<member_id>", "sdp": {...}}
-    {"type": "ice", "to": "<member_id>", "candidate": {...}}
-    {"type": "state", "mic": bool, "cam": bool}
-
-Servidor → cliente:
-
-    {"type": "welcome", "you": "<id>", "peers": [...], "ice_servers": [...]}
-    {"type": "peer-joined", "peer": {...}}
-    {"type": "peer-left", "member_id": "<id>"}
-    {"type": "peer-state", "member_id": "<id>", "mic": bool, "cam": bool}
-    {"type": "offer"|"answer", "from": "<id>", "payload": {...sdp...}}
-    {"type": "ice", "from": "<id>", "payload": {...candidate...}}
+Token travels in the query string (WebSocket clients cannot set headers).
 """
 
 from __future__ import annotations
@@ -70,11 +39,7 @@ router = APIRouter()
 
 @dataclass(slots=True)
 class CallIdentity:
-    """Quién está entrando a la llamada, ya verificado contra la base.
-
-    Es lo mínimo que el señalizador necesita saber: la identidad pública del
-    participante. No guarda la sesión ni el `Member` completo.
-    """
+    """Call participant identity, verified against the DB."""
 
     member_id: str
     nickname: str
@@ -82,17 +47,7 @@ class CallIdentity:
 
 
 async def resolve_identity(server_id: str, channel_id: str, token: str) -> CallIdentity:
-    """Verifica token, servidor, canal y pertenencia. Devuelve la identidad.
-
-    Se separa del endpoint para poder testearla aislada y para que el endpoint
-    quede lineal: aceptar, resolver, entrar, loop. Los tests la reemplazan sin
-    tocar la base.
-
-    El orden importa: primero el token (¿sos alguien?), después el servidor
-    (¿existe?), después que tu token sea de *este* servidor (¿sos alguien acá?),
-    y por último el canal. Un token de otro servidor queda rechazado aunque el
-    servidor exista, que es la garantía de que la identidad no es global.
-    """
+    """Verify token, server, membership, and channel — in that order."""
     if not token:
         raise AuthenticationError("Falta el token.", code="missing_token")
 
@@ -136,12 +91,7 @@ async def resolve_identity(server_id: str, channel_id: str, token: str) -> CallI
 
 
 async def _handle_message(channel_id: str, peer: Peer, raw: str) -> None:
-    """Procesa un mensaje crudo del cliente.
-
-    Tres casos, y solo tres: reenviar SDP/ICE a un par concreto, o actualizar el
-    estado de micrófono/cámara y avisar a la sala. Cualquier otra cosa se
-    descarta: el señalizador no interpreta, solo enruta.
-    """
+    """Route one raw client message: relay SDP/ICE, apply state updates, drop the rest."""
     message = parse_signal(raw)
     if message is None:
         return
@@ -160,7 +110,7 @@ async def _handle_message(channel_id: str, peer: Peer, raw: str) -> None:
             {
                 "type": kind,
                 "from": peer.member_id,
-                # `sdp` o `candidate`, indistintamente: el servidor no mira dentro.
+                # `sdp` or `candidate`; the server never inspects the payload.
                 "payload": message.get("sdp") if kind != "ice" else message.get("candidate"),
             },
         )
@@ -184,7 +134,7 @@ async def _handle_message(channel_id: str, peer: Peer, raw: str) -> None:
 
 
 def _as_bool(value: object, *, default: bool) -> bool:
-    """Convierte lo que mandó el cliente a bool. Si no es bool, deja el actual."""
+    """Coerce client input to bool, keeping the current value otherwise."""
     return value if isinstance(value, bool) else default
 
 
@@ -195,22 +145,14 @@ async def call_signaling(
     channel_id: str,
     settings: SettingsDep,
 ) -> None:
-    """El socket de una llamada. Señaliza, no transmite.
-
-    El ciclo es: aceptar → verificar identidad → entrar a la sala y que la sala
-    me conozca → avisar a los demás → quedarme reenviando hasta que me vaya. Al
-    irme, salgo y aviso, pase lo que pase: el `finally` es lo que garantiza que
-    una sala no quede con un fantasma dentro.
-    """
+    """One call socket: accept, verify, join, relay until disconnect; `finally` always leaves."""
     await websocket.accept()
 
     token = (websocket.query_params.get("token") or "").strip()
     try:
         identity = await resolve_identity(server_id, channel_id, token)
     except Exception as exc:
-        # Antes del handshake no se puede responder con JSON: el canal de error
-        # de un WebSocket es el código de cierre. 1008 es "policy violation",
-        # que es exactamente lo que es un token inválido.
+        # Pre-handshake errors use close codes (no JSON channel yet); 1008 = policy violation.
         await websocket.close(code=1008, reason=_close_reason(exc))
         return
 
@@ -223,9 +165,7 @@ async def call_signaling(
 
     existing = await call_manager.join(channel_id, peer)
 
-    # Le doy al recién llegado la lista de quien ya está: con eso arma sus
-    # ofertas. Y le paso los ICE servers que configuró el dueño, para que no
-    # estén dispersos en el cliente.
+    # Present the room and ICE servers so the newcomer can offer.
     await websocket.send_json(
         {
             "type": "welcome",
@@ -255,15 +195,14 @@ async def call_signaling(
 
 
 def _close_reason(exc: Exception) -> str:
-    """Razón legible para el cierre del socket, acotada a lo que permite el protocolo."""
+    """Human-readable close reason, truncated to the protocol limit."""
     code = getattr(exc, "code", None)
     reason = code if isinstance(code, str) else "unauthorized"
-    # El reason de cierre tiene un límite de bytes; recortar antes que romper.
     return reason[:120]
 
 
 class CallParticipant(BaseModel):
-    """Un participante de la llamada, tal como lo ve la sala."""
+    """A call participant as seen by the room."""
 
     member_id: str
     nickname: str
@@ -273,7 +212,7 @@ class CallParticipant(BaseModel):
 
 
 class CallParticipantsResponse(BaseModel):
-    """Quién está en la llamada ahora mismo y cuántos pueden entrar todavía."""
+    """Current call presence and capacity."""
 
     channel_id: str
     participants: list[CallParticipant] = Field(default_factory=list)
@@ -292,15 +231,7 @@ async def call_participants(
     member: CurrentMember,
     settings: SettingsDep,
 ) -> CallParticipantsResponse:
-    """Quién está conectado a la llamada de un canal, sin abrir el WebSocket.
-
-    Es la mirada rápida que hace la UI antes de entrar: muestra los avatares de
-    quien ya está adentro. No toca la base —la sala vive en memoria del
-    proceso— y por eso es inmediato.
-
-    El token ya scopea al servidor (`member.server_id`), así que alcanaza
-    comparar con el de la ruta para saber que es tu servidor.
-    """
+    """Peers in a channel's call (in-memory); the token must belong to this server."""
     if member.server_id != server_id:
         raise PermissionDeniedError(
             "Tu token es de otro servidor.",
