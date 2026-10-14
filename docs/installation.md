@@ -150,7 +150,7 @@ That everyone has the same isn't promised, it's mechanical:
 - **Dependencies**: `uv.lock` pins the exact version of each package, with
   hashes. `uv sync --locked` fails if the lock doesn't match `pyproject.toml`,
   so nobody can accidentally install a different version.
-- **Configuration**: defaults live in `src/core/config.py`, the same for
+- **Configuration**: defaults live in `src/config/conf.py`, the same for
   everyone. Only `RECOP_SECRET_KEY` must be unique per install.
 
 ---
