@@ -1,15 +1,8 @@
 {
-<<<<<<< HEAD
-  "name": "hazel-desktop",
-  "productName": "Hazel",
-  "version": "0.1.0",
-  "description": "Cliente de escritorio de Hazel: tu chat, tu máquina, tu puerto.",
-=======
   "name": "hazel-desktop",
   "productName": "Hazel",
   "version": "0.2.0",
   "description": "Cliente de escritorio de Hazel: tu chat, tu máquina, tu puerto.",
->>>>>>> pr-19
   "main": "dist/main.js",
   "private": true,
   "license": "GPL-3.0-or-later",

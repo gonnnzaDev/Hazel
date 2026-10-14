@@ -128,6 +128,24 @@ if uv sync --locked 2>&1 | sed 's/^/    /'; then
     ok "dev tools installed"
 fi
 
+# ─── 4b. Frontend (Electron) ─────────────────────────────────────────────────
+if command -v npm >/dev/null 2>&1; then
+    step "Installing frontend dependencies"
+    if (cd front && npm ci 2>&1 | tail -n 3 | sed 's/^/    /'); then
+        ok "frontend dependencies installed a front/"
+    else
+        info "no se pudieron instalar deps del front; instalarlas con cd front && npm install"
+    fi
+    step "Compiling the desktop client"
+    if (cd front && npm run build >/dev/null 2>&1); then
+        ok "desktop client built (front/dist)"
+    else
+        warn "frontend build failed; run cd front && npm run build to retry"
+    fi
+else
+    warn "npm not found; skip frontend. Install Node 20 LTS for the desktop client."
+fi
+
 # ─── 5. Configuration ─────────────────────────────────────────────────────────
 
 step "Preparing configuration"
@@ -208,6 +226,7 @@ fi
 
 if [ "$HAVE_DOCKER" -eq 1 ]; then
     step "Starting PostgreSQL and Kafka"
+    docker compose -f docker-compose.dev.yml pull >/dev/null 2>&1 || true
     if docker compose -f docker-compose.dev.yml up -d 2>&1 | sed 's/^/    /'; then
         info "waiting for PostgreSQL to respond..."
         for _ in $(seq 1 30); do
