@@ -18,11 +18,9 @@ npm install
 npm start
 ```
 
-O desde la raíz del repo: `make front`.
-
-Si vas a crear servidores, antes levantá tu nodo (`make up` y `make api`, o
-`docker compose up`). Para entrar al servidor de un amigo no hace falta: alcanza
-con la dirección que te pasó.
+Si vas a crear servidores, antes levantá tu nodo (`make up` y
+`uv run python -m core node`, o `docker compose up`). Para entrar al servidor
+de un amigo no hace falta: alcanza con la dirección que te pasó.
 
 ---
 

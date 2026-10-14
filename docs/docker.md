@@ -31,7 +31,7 @@ Para desarrollar:
 ```bash
 docker compose -f docker-compose.dev.yml up -d
 make migrate
-make api          # corre en tu máquina
+make api          # corre en tu máquina, con recarga
 ```
 
 ---
