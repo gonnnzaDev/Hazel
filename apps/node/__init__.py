@@ -1,14 +1,7 @@
-"""El nodo: el proceso Recop corriendo en la máquina del dueño.
+"""The node: the Recop process on the owner's machine.
 
-El nodo es lo que se instala, lo que se levanta y lo que comparte su dirección.
-Escucha en **un solo puerto** y hospeda varios servidores adentro.
-
-El ciclo de vida del puerto es el del proceso: mientras el nodo corre, el puerto
-está abierto; cuando se apaga, se cierra y no se entra a ningún servidor. Apagar
-el nodo nunca borra datos.
-
-Esta app no tiene `models.py`: el nodo no tiene persistencia propia. Es
-configuración y lectura del entorno.
+Listens on a single port, hosts several servers. Port lifecycle = process
+lifecycle. Stopping never deletes data. No models: config and env only.
 """
 
 __all__: list[str] = []

@@ -1,8 +1,6 @@
-"""Errores de dominio y su traducción a respuestas HTTP.
+"""Domain errors mapped to RFC 9457 problem+json.
 
-El servicio (capa `services.py`) lanza estas excepciones sin saber nada de HTTP.
-Los handlers globales de la app las traduce a `application/problem+json`
-(RFC 9457), así los clientes de PC y de mobile They'll parsean el mismo formato.
+Services raise without knowing HTTP; handlers translate for all clients.
 """
 
 from __future__ import annotations
@@ -18,10 +16,7 @@ PROBLEM_CONTENT_TYPE = "application/problem+json"
 
 
 class DomainError(Exception):
-    """Base de todos los errores de negocio.
-
-    Los servicios lanzan esto. La capa API decide cómo presentarlo.
-    """
+    """Base for business errors; API layer renders it."""
 
     status_code: int = 400
     code: str = "domain_error"
@@ -51,7 +46,7 @@ class NotFoundError(DomainError):
 
 
 class ConflictError(DomainError):
-    """Conflicto con el estado actual: nombre duplicado, servidor ya activo, etc."""
+    """Current-state conflict (e.g. duplicate name, already active)."""
 
     status_code = 409
     code = "conflict"
@@ -59,7 +54,7 @@ class ConflictError(DomainError):
 
 
 class ValidationDomainError(DomainError):
-    """Datos válidos sintácticamente pero incoherentes con las reglas del dominio."""
+    """Syntactically valid data violating domain rules."""
 
     status_code = 422
     code = "domain_validation_error"
@@ -79,11 +74,7 @@ class PermissionDeniedError(DomainError):
 
 
 class ServerInactiveError(DomainError):
-    """El servidor existe pero no está corriendo.
-
-    En Recop un servidor apagado conserva toda su información; solo deja de
-    aceptar conexiones. Este error es la señal de que hay que reactivarlo.
-    """
+    """Server exists but is stopped; reactivate to accept connections."""
 
     status_code = 409
     code = "server_inactive"
@@ -98,7 +89,7 @@ def problem(
     code: str,
     extra: dict[str, Any] | None = None,
 ) -> JSONResponse:
-    """Construye una respuesta `application/problem+json`."""
+    """Build an application/problem+json response."""
     payload: dict[str, Any] = {
         "type": f"https://recop.dev/errors/{code}",
         "title": title,
@@ -112,7 +103,7 @@ def problem(
 
 
 def register_exception_handlers(app: FastAPI) -> None:
-    """Registra los handlers que traducen excepciones a respuestas consistentes."""
+    """Register handlers mapping exceptions to consistent responses."""
 
     @app.exception_handler(DomainError)
     async def _domain_error_handler(_: Request, exc: DomainError) -> JSONResponse:
@@ -145,8 +136,7 @@ def register_exception_handlers(app: FastAPI) -> None:
 
     @app.exception_handler(Exception)
     async def _unhandled_error_handler(_: Request, exc: Exception) -> JSONResponse:
-        # No filtramos detalles internos al cliente; se registran en el log
-        # del servidor para diagnóstico.
+        # Never leak internals; details stay in server logs.
         return problem(
             status=500,
             title="Error interno",

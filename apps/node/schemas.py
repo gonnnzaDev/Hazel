@@ -1,4 +1,4 @@
-"""Contratos del nodo."""
+"""Node contracts."""
 
 from __future__ import annotations
 
@@ -8,11 +8,7 @@ from core.network import LocalAddress
 
 
 class NodeInfo(BaseModel):
-    """Ficha del nodo.
-
-    Dice qué es este proceso y en qué puerto escucha. Es lo primero que un
-    cliente consulta para saber a qué se conectó.
-    """
+    """Node card: what this process is and where it listens."""
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -26,22 +22,17 @@ class NodeInfo(BaseModel):
 
 
 class NodeAddress(BaseModel):
-    """La dirección por la que otras personas entran al nodo."""
+    """Address others use to reach the node."""
 
     model_config = ConfigDict(from_attributes=True)
 
     port: int
     bind_host: str
     is_wildcard: bool
-    """Si el nodo escucha en todas las interfaces.
-
-    Cuando es `true`, `bind_host` no sirve para conectarse: hay que usar una de
-    las direcciones de `candidates`.
-    """
+    """True when bound to all interfaces; then use candidates."""
 
     candidates: list[LocalAddress]
-    """Direcciones reales de la máquina, ordenadas por probabilidad."""
+    """Real machine addresses, best-first."""
 
     recommended: str | None
-    """La primera de `candidates`. Sugerencia, no garantía: el cliente puede
-    mostrar todas y dejar que el dueño elija."""
+    """First candidate; suggestion, not guarantee."""

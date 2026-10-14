@@ -1,13 +1,6 @@
-"""Registro de apps, al estilo Django.
+"""Django-style app registry; explicit list keeps migration order deterministic.
 
-Una "app" es un módulo autocontenido bajo `apps/` que agrupa sus modelos,
-schemas, servicios y rutas. Acá se declara explícitamente cuáles están activas,
-para que el orden de importación de las migraciones sea determinista y no
-dependa de que alguien importe un módulo por accidente.
-
-Para agregar una app nueva:
-  1. Creá `apps/<nombre>/` con `models.py`, `schemas.py`, `services.py`, `api/`.
-  2. Registrala acá en la lista `INSTALLED_APPS`.
+New app: create apps/<name>/, then add it to INSTALLED_APPS.
 """
 
 from __future__ import annotations
@@ -25,7 +18,7 @@ from apps.servers.api.router import router as servers_router
 
 @dataclass(frozen=True, slots=True)
 class AppConfig:
-    """Configuración de una app registrada."""
+    """Registered app config."""
 
     name: str
     router: APIRouter
@@ -33,8 +26,7 @@ class AppConfig:
     tags: tuple[str, ...] = ()
 
 
-# El orden importa: Alembic autogenera migraciones recorriendo los modelos en
-# este orden, así que las apps base van primero.
+# Order matters: Alembic walks models in this order; base apps first.
 INSTALLED_APPS: tuple[AppConfig, ...] = (
     AppConfig(name="common", router=common_router),
     AppConfig(name="node", router=node_router, prefix="/node", tags=("nodo",)),
@@ -45,7 +37,7 @@ INSTALLED_APPS: tuple[AppConfig, ...] = (
 
 
 class AppRegistry:
-    """Colección de apps activas y ensamble de sus routers."""
+    """Active apps and their assembled routers."""
 
     def __init__(self, installed: tuple[AppConfig, ...] = INSTALLED_APPS) -> None:
         self._installed = installed
@@ -55,7 +47,7 @@ class AppRegistry:
         return tuple(app.name for app in self._installed)
 
     def build_router(self) -> APIRouter:
-        """Devuelve un router con los routers de todas las apps registradas."""
+        """Router combining all registered app routers."""
         router = APIRouter()
         for app in self._installed:
             router.include_router(app.router, prefix=app.prefix, tags=list(app.tags) or [app.name])

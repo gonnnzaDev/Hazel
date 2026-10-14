@@ -1,17 +1,6 @@
-"""Lógica de negocio del ciclo de vida del servidor.
+"""Server lifecycle business logic (no FastAPI; raises domain errors).
 
-Este módulo **no importa FastAPI**. Habla en excepciones de dominio
-(`core/api/errors.py`), que la capa API traduce a respuestas HTTP. Eso permite
-testearlo sin levantar la app y reutilizarlo tal cual desde un worker o un CLI.
-
-Reglas que implementa:
-
-1. Desplegar un servidor deja el puerto abierto: crear implica activar.
-2. Desactivar **no** borra nada. Canales, miembros y mensajes quedan intactos y
-   el servidor vuelve a levantar igual. Es el corazón del producto.
-3. Si el proceso se cae, el servidor queda `INACTIVE`, nunca destruido.
-4. Activar un servidor ya activo es un no-op, no un error.
-5. Borrar es la única operación destructiva, y es explícita.
+Deactivating preserves all data; deleting is the only destructive op.
 """
 
 from __future__ import annotations
@@ -45,35 +34,28 @@ MAX_SLUG_LENGTH = 64
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Normalización
+# Normalization
 # ──────────────────────────────────────────────────────────────────────────────
 
 
-#: Direcciones comodín: el proceso escucha en todas las interfaces.
-#:
-#: Un nodo autohospedado necesita una de estas para ser alcanzable por la red,
-#: pero no sirven como dirección compartible: `0.0.0.0` es un comodín, no un
-#: destino. Ver `ServerAddress.host_is_wildcard`.
+#: Wildcard binds: reachable on the network but not a shareable destination.
 WILDCARD_HOSTS = frozenset({"0.0.0.0", "::", "[::]"})  # noqa: S104
 
 
 def is_wildcard_host(host: str) -> bool:
-    """Si el host es una dirección comodín en vez de una IP concreta."""
+    """Whether the host is a wildcard bind rather than a concrete IP."""
     return host.strip() in WILDCARD_HOSTS
 
 
 def normalize_slug(raw: str) -> str:
-    """Convierte un nombre de servidor en un identificador compartible.
-
-    `"Casa de Luis"` → `"casa-de-luis"`.
-    """
+    """Fold a server name into a shareable identifier ("Casa de Luis" -> "casa-de-luis")."""
     decomposed = unicodedata.normalize("NFKD", raw.strip().casefold())
     without_accents = "".join(ch for ch in decomposed if not unicodedata.combining(ch))
     return re.sub(r"[^a-z0-9]+", "-", without_accents).strip("-")
 
 
 async def slug_taken(session: AsyncSession, slug: str, *, exclude: RecordId | None = None) -> bool:
-    """Si el slug ya está en uso por otro servidor."""
+    """Whether another server already uses the slug."""
     stmt = select(func.count()).select_from(Server).where(Server.slug == slug)
     if exclude is not None:
         stmt = stmt.where(Server.id != exclude)
@@ -81,12 +63,12 @@ async def slug_taken(session: AsyncSession, slug: str, *, exclude: RecordId | No
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Lecturas
+# Reads
 # ──────────────────────────────────────────────────────────────────────────────
 
 
 async def get_server(session: AsyncSession, server_id: RecordId) -> Server:
-    """Carga un servidor con sus canales. Lanza `NotFoundError` si no existe."""
+    """Load a server with its channels; raises `NotFoundError` if missing."""
     stmt = select(Server).options(selectinload(Server.channels)).where(Server.id == server_id)
     server = (await session.execute(stmt)).scalar_one_or_none()
 
@@ -102,11 +84,7 @@ async def get_server(session: AsyncSession, server_id: RecordId) -> Server:
 async def list_servers(
     session: AsyncSession, *, limit: int, offset: int
 ) -> tuple[list[Server], int]:
-    """Listado paginado, del más reciente al más viejo.
-
-    Los ids son UUID v7, así que `ORDER BY id DESC` ya es un orden por fecha de
-    creación y no hace falta un índice extra.
-    """
+    """Paginated listing, newest first (UUIDv7 ids already order by creation time)."""
     total = (await session.execute(select(func.count()).select_from(Server))).scalar_one()
 
     stmt = (
@@ -121,7 +99,7 @@ async def list_servers(
 
 
 async def resolve_by_slug(session: AsyncSession, slug: str) -> Server:
-    """Busca un servidor por su identificador, que es lo que se comparte."""
+    """Find a server by its shared slug."""
     stmt = select(Server).options(selectinload(Server.channels)).where(Server.slug == slug)
     server = (await session.execute(stmt)).scalar_one_or_none()
 
@@ -135,12 +113,11 @@ async def resolve_by_slug(session: AsyncSession, slug: str) -> Server:
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Escrituras
+# Writes
 # ──────────────────────────────────────────────────────────────────────────────
 
 
 def _build_channels(payload_channels: list[ChannelCreate]) -> list[Channel]:
-    """Construye los canales iniciales a partir del payload."""
     channels: list[Channel] = []
     for raw in payload_channels:
         try:
@@ -165,7 +142,7 @@ def _build_channels(payload_channels: list[ChannelCreate]) -> list[Channel]:
 
 
 def _ensure_default_channel(server: Server) -> None:
-    """Garantiza que el servidor tenga exactamente un canal por defecto."""
+    """Ensure exactly one default channel."""
     if not server.channels:
         server.channels.append(
             Channel(
@@ -184,23 +161,12 @@ def _ensure_default_channel(server: Server) -> None:
             code="multiple_default_channels",
         )
     if not defaults:
-        # El primero por posición asume el rol de canal de entrada.
+        # First by position becomes the entry channel.
         server.channels[0].is_default = True
 
 
 async def create_server(session: AsyncSession, payload: ServerCreate, *, port: int) -> Server:
-    """Registra un grupo nuevo en la base.
-
-    El puerto lo decide el caller, no esta función: asignarlo es trabajo del
-    proceso del nodo, que es el único que sabe qué puertos están ocupados en la
-    máquina. Ver `apps.node.services.create_group`, que es la entrada de verdad
-    para desplegar un grupo: asigna el puerto, levanta el proceso y recién
-    después llama a esta.
-
-    El grupo nace `CREATING`: el estado final lo pone quien levantó el proceso,
-    porque hasta que el proceso responde no se sabe si el grupo está-serving o
-    no. Marcarlo `ACTIVE` antes sería mentir.
-    """
+    """Register a new group; the caller assigns the port. Starts CREATING until live."""
     slug = normalize_slug(payload.slug)
     if len(slug) < MIN_SLUG_LENGTH or len(slug) > MAX_SLUG_LENGTH:
         raise ValidationDomainError(
@@ -237,7 +203,7 @@ async def create_server(session: AsyncSession, payload: ServerCreate, *, port: i
 
 
 async def update_server(session: AsyncSession, server: Server, payload: ServerUpdate) -> Server:
-    """Aplica cambios parciales a la configuración del servidor."""
+    """Apply partial config changes."""
     changes = payload.model_dump(exclude_unset=True)
 
     for field, value in changes.items():
@@ -248,11 +214,7 @@ async def update_server(session: AsyncSession, server: Server, payload: ServerUp
 
 
 async def activate_server(session: AsyncSession, server: Server) -> Server:
-    """Activa el servidor y abre su puerto.
-
-    Activar uno ya activo es un no-op, no un error: el dueño puede poner "encender
-    el servidor" en su flujo sin consultar el estado previo.
-    """
+    """Activate the server; already-active is a no-op, not an error."""
     if server.status is ServerStatus.ACTIVE:
         server.last_heartbeat_at = utcnow()
         await session.flush()
@@ -281,13 +243,7 @@ async def activate_server(session: AsyncSession, server: Server) -> Server:
 
 
 async def deactivate_server(session: AsyncSession, server: Server) -> Server:
-    """Desactiva el servidor y cierra su puerto.
-
-    **No borra nada.** Canales, miembros y mensajes quedan intactos y el
-    servidor vuelve a levantar con todo dentro. Es el comportamiento que el
-    producto necesita: si el dueño apaga su servidor, tiene que poder volver a
-    encenderlo y encontrarlo como estaba.
-    """
+    """Deactivate and close the port; preserves all data for reactivation."""
     if server.status is ServerStatus.INACTIVE:
         return server
 
@@ -313,23 +269,14 @@ async def deactivate_server(session: AsyncSession, server: Server) -> Server:
 
 
 async def heartbeat(session: AsyncSession, server: Server, *, at: datetime | None = None) -> Server:
-    """Registra que el proceso del servidor sigue vivo.
-
-    Permite distinguir un servidor que el dueño apagó a propósito de uno que se
-    cayó. La diferencia importa: lo primero es una decisión, lo segundo un
-    incidente.
-    """
+    """Record liveness; distinguishes intentional stop from crash."""
     server.last_heartbeat_at = at or utcnow()
     await session.flush()
     return server
 
 
 async def delete_server(session: AsyncSession, server: Server) -> None:
-    """Elimina el servidor de forma permanente.
-
-    Es la única operación destructiva del ciclo de vida, y la única que el dueño
-    tiene que pedir explícitamente. Los canales se van por cascada.
-    """
+    """Permanently delete the server (the only destructive op); channels cascade."""
     if server.status.is_terminal:
         raise ConflictError(
             "Este servidor ya fue eliminado.",
@@ -350,18 +297,7 @@ async def delete_server(session: AsyncSession, server: Server) -> None:
 
 
 async def mark_all_inactive(session: AsyncSession) -> int:
-    """Pasa a `INACTIVE` todo servidor que figure `ACTIVE` en la base.
-
-    Se llama al **arrancar** el nodo. Cubre exactamente el caso que pediste: si el
-    proceso se cerró de cualquier manera (crash, cierre de la PC, kill), al
-    volver a levantar el nodo ningún servidor queda marcado como activo cuando
-    en realidad no lo está.
-
-    Sin esto, un servidor que se cayó seguiría figurando `ACTIVE` en la base y
-    el sistema creería que su puerto está abierto.
-
-    Devuelve cuántos servidores quedaron marcados.
-    """
+    """Mark CREATING/ACTIVE servers INACTIVE at node startup (covers crashes/kills)."""
     result = await session.execute(
         update(Server)
         .where(Server.status.in_([ServerStatus.CREATING, ServerStatus.ACTIVE]))
@@ -379,16 +315,12 @@ async def mark_all_inactive(session: AsyncSession) -> int:
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Guardas
+# Guards
 # ──────────────────────────────────────────────────────────────────────────────
 
 
 def ensure_active(server: Server) -> None:
-    """Falla si el servidor no está listo para atender tráfico.
-
-    Se usa en el chat: escribir en un servidor apagado tiene que devolver un
-    error claro, no un fallo de conexión críptico que el cliente no sabe leer.
-    """
+    """Raise a clear error unless the server accepts traffic."""
     if not server.status.accepts_traffic:
         raise ServerInactiveError(
             f"El servidor está {server.status.value}. No acepta conexiones hasta "
@@ -400,12 +332,7 @@ def ensure_active(server: Server) -> None:
 async def create_message(
     session: AsyncSession, channel_id: RecordId, author_nickname: str, content: str
 ) -> Message:
-    """Registra un mensaje de texto en un canal.
-
-    El mensaje queda asociado al canal y se ordena por `created_at`.
-    No hay validación de permisos: cualquier cliente conectado al servidor
-    puede enviar mensajes (la regla de permisos la aplica el cliente).
-    """
+    """Record a text message; no permission check (enforced by the client)."""
     message = Message(
         id=new_id(),
         channel_id=channel_id,
@@ -421,7 +348,7 @@ async def create_message(
 async def list_messages(
     session: AsyncSession, channel_id: RecordId, limit: int = 50, offset: int = 0
 ) -> tuple[list[Message], int]:
-    """Devuelve el historial de mensajes de un canal, más recientes primero."""
+    """Channel history, newest first."""
     total = (
         await session.execute(
             select(func.count()).select_from(Message).where(Message.channel_id == channel_id)
@@ -436,8 +363,3 @@ async def list_messages(
     )
     messages = (await session.execute(stmt)).scalars().all()
     return list(messages), int(total)
-
-
-# ──────────────────────────────────────────────────────────────────────────────
-# Guardas
-# ──────────────────────────────────────────────────────────────────────────────

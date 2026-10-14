@@ -1,10 +1,4 @@
-"""Modelos del servidor y sus canales.
-
-Dos entidades:
-
-- `Server`: un servidor hosteado por su dueño en su propia máquina.
-- `Channel`: una sala de chat dentro de un servidor.
-"""
+"""Server and channel models."""
 
 from __future__ import annotations
 
@@ -34,48 +28,24 @@ from core.db.base import Base
 
 
 def _enum_values(enum_cls: type[StrEnum]) -> list[str]:
-    """Devuelve los *valores* de un StrEnum para usarlos en el tipo de PostgreSQL.
-
-    Sin esto, SQLAlchemy persiste los NOMBRES de los miembros (`ACTIVE`) en vez
-    de los valores (`active`). Los valores son los que ve la API y los que
-    escriben las migraciones a mano, así que son los que van a la base.
-    """
+    """Enum values (not member names) for the Postgres type."""
     return [member.value for member in enum_cls]
 
 
 class ChannelKind(StrEnum):
-    """Tipo de sala de chat."""
+    """Chat room kind."""
 
     TEXT = "text"
-    """Sala de conversación normal."""
 
     VOICE = "voice"
-    """Canal de voz. El modelo de audio todavía no está definido."""
+    """Voice channel (no audio model yet)."""
 
 
 class Server(Base):
-    """Un grupo de Recop.
+    """A group running in its own process on its own port (fault isolation).
 
-    Un grupo vive **dentro de un nodo** y corre en **su propio proceso**, con
-    **su propio puerto**. Ese puerto es lo que el dueño comparte con sus
-    invitados.
-
-    ## Por qué el grupo tiene puerto propio
-
-    Porque corre en un proceso propio. Si dos grupos compartieran el puerto
-    estarían en el mismo proceso, y un grupo que se cuelga se llevaría por
-    delante a los demás. Con un proceso y un puerto por grupo, un problema afecta
-    a un grupo y el dueño lo reencciende sin tocar el resto.
-
-    El proceso del nodo tiene su propio puerto (`RECOP_PORT`), que es el del
-    panel del dueño. Los puertos de los grupos se reparten desde
-    `RECOP_PORT + 1` hasta `RECOP_GROUP_PORT_END`.
-
-    ## Quién escribe acá
-
-    Casi todo lo escribe el proceso del nodo, vía `apps.node.services`. La
-    columna no se actualiza sola: el estado del grupo en la base tiene que
-    coincidir con el de su proceso, y eso lo garantiza el supervisor.
+    Ports come from RECOP_PORT + 1; the node process keeps its own port.
+    The DB status must match the process state; the supervisor enforces that.
     """
 
     __tablename__ = "servers"
@@ -83,10 +53,9 @@ class Server(Base):
     id: Mapped[RecordId] = mapped_column(primary_key=True, default=new_id)
 
     name: Mapped[str] = mapped_column(String(64), nullable=False)
-    """Nombre visible del grupo. Lo elige el dueño al crearlo."""
 
     slug: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
-    """Identificador legible para compartir. Ej: `casa-de-luis`."""
+    """Shareable readable identifier (e.g. `casa-de-luis`)."""
 
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
 
@@ -96,18 +65,18 @@ class Server(Base):
         default=ServerStatus.CREATING,
         index=True,
     )
-    """Estado del ciclo de vida. Ver `apps/servers/states.py`."""
+    """Lifecycle state; see `apps/servers/states.py`."""
 
     bind_port: Mapped[int] = mapped_column(Integer, nullable=False)
-    """Puerto de este grupo. Lo asigna el proceso del nodo al crearlo."""
+    """Port, assigned by the node process at creation."""
 
     max_members: Mapped[int] = mapped_column(SmallInteger, nullable=False, default=50)
-    """Límite de miembros. Protege al dueño de un abuso de su propia máquina."""
+    """Member cap; guards the owner's machine."""
 
     last_heartbeat_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
-    """Último latido del proceso del grupo. Distingue 'apagado' de 'caído'."""
+    """Last process heartbeat; distinguishes stopped from crashed."""
 
     channels: Mapped[list[Channel]] = relationship(
         back_populates="server",
@@ -128,7 +97,7 @@ class Server(Base):
 
 
 class Channel(Base):
-    """Una sala de chat dentro de un servidor."""
+    """A chat room inside a server."""
 
     __tablename__ = "channels"
 
@@ -141,7 +110,6 @@ class Channel(Base):
     )
 
     name: Mapped[str] = mapped_column(String(64), nullable=False)
-    """Nombre del canal. Ej: `general`, `game-over`."""
 
     kind: Mapped[ChannelKind] = mapped_column(
         SAEnum(ChannelKind, name="channel_kind", native_enum=True, values_callable=_enum_values),
@@ -152,10 +120,10 @@ class Channel(Base):
     topic: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
     position: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    """Orden de presentación en la sidebar del cliente."""
+    """Display order in the client sidebar."""
 
     is_default: Mapped[bool] = mapped_column(nullable=False, default=False)
-    """Canal al que se entra automáticamente. Hay exactamente uno por servidor."""
+    """Auto-join channel; exactly one per server."""
 
     server: Mapped[Server] = relationship(back_populates="channels")
 
@@ -166,7 +134,7 @@ class Channel(Base):
 
 
 class Message(Base):
-    """Un mensaje de texto en un canal de un servidor."""
+    """A text message in a server channel."""
 
     __tablename__ = "messages"
 
@@ -179,14 +147,12 @@ class Message(Base):
     )
 
     author_nickname: Mapped[str] = mapped_column(String(64), nullable=False)
-    """Apodo del miembro que envió el mensaje. Se muestra tal como fue registrado."""
+    """Author nickname as recorded at send time."""
 
     content: Mapped[str] = mapped_column(Text, nullable=False)
-    """Contenido del mensaje."""
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=utcnow
     )
-    """Cuándo se envió el mensaje."""
 
     __table_args__ = (Index("ix_messages_channel_id_created_at", "channel_id", "created_at"),)

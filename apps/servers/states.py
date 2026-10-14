@@ -1,17 +1,6 @@
-"""Estados posibles de un servidor.
+"""Server lifecycle states.
 
-La distinción clave de Recop: `INACTIVE` no es "borrado". Un servidor inactivo
-conserva todos sus datos y vuelve a levantar igual. Solo deja de aceptar
-conexiones.
-
-`ACTIVE` es el único estado en el que el servidor acepta tráfico.
-
-Sobre por qué no hay un estado `DELETING`: se evaluó y se descartó. El borrado
-es una operación síncrona e inmediata, así que un estado intermedio "borrando"
-nunca sería observable por ningún cliente. Un estado que nadie puede ver solo
-suma ruido al grafo. Si algún día el borrado se vuelve asíncrono porque hay
-historial pesado que limpiar, ahí vuelve, y la capa de service ya tiene el
-punto de extensión.
+INACTIVE keeps all data; deletion is synchronous so there is no DELETING state.
 """
 
 from __future__ import annotations
@@ -20,40 +9,32 @@ from enum import StrEnum
 
 
 class ServerStatus(StrEnum):
-    """Ciclo de vida de un servidor."""
+    """Server lifecycle."""
 
     CREATING = "creating"
-    """Se está configurando. Todavía no acepta tráfico.
-
-    Efímero: `create_server` lo usa dentro de la misma transacción y nunca lo
-    expone al cliente. Existe para que el estado inicial sea explícito en el
-    modelo en vez de implícito.
-    """
+    """Being set up; accepts no traffic."""
 
     ACTIVE = "active"
-    """Corriendo. Acepta conexiones. El puerto está abierto."""
+    """Running; port open, accepts connections."""
 
     INACTIVE = "inactive"
-    """Apagado, o con el proceso caído. Conserva todos sus datos."""
+    """Stopped or crashed; keeps all data."""
 
     DELETED = "deleted"
-    """Eliminado por el dueño. Estado terminal."""
+    """Owner-deleted; terminal."""
 
     @property
     def accepts_traffic(self) -> bool:
-        """Si el servidor está en condiciones de atender conexiones."""
+        """Whether the server can serve connections."""
         return self is ServerStatus.ACTIVE
 
     @property
     def is_terminal(self) -> bool:
-        """Si no hay más transiciones posibles desde acá."""
+        """Whether no further transitions are possible."""
         return self is ServerStatus.DELETED
 
 
-#: Transiciones válidas del ciclo de vida.
-#:
-#: Deliberadamente no existe `ACTIVE → ACTIVE`: activar un servidor ya activo
-#: es un no-op explícito en el service, no una transición.
+#: Valid lifecycle transitions (no ACTIVE -> ACTIVE: re-activating is a service-level no-op).
 TRANSITIONS: dict[ServerStatus, frozenset[ServerStatus]] = {
     ServerStatus.CREATING: frozenset(
         {ServerStatus.ACTIVE, ServerStatus.INACTIVE, ServerStatus.DELETED}
@@ -65,10 +46,10 @@ TRANSITIONS: dict[ServerStatus, frozenset[ServerStatus]] = {
 
 
 def can_transition(current: ServerStatus, target: ServerStatus) -> bool:
-    """Si se puede pasar de `current` a `target`."""
+    """Whether `current` may move to `target`."""
     return target in TRANSITIONS.get(current, frozenset())
 
 
 def next_states(current: ServerStatus) -> frozenset[ServerStatus]:
-    """Estados alcanzables desde `current`."""
+    """States reachable from `current`."""
     return TRANSITIONS.get(current, frozenset())
