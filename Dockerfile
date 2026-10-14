@@ -1,21 +1,21 @@
 # syntax=docker/dockerfile:1.7
 #
-# Imagen de Recop.
+# Recop image.
 #
-# Es un multi-stage: la primera etapa compila las dependencias, la segunda copia
-# solo el resultado. Así la imagen final no lleva el compilador, ni uv, ni el
-# código fuente que ya no hace falta.
+# Multi-stage build: the first stage compiles the dependencies, the second copies
+# only the result. So the final image carries no compiler, no uv, and none of
+# the source code that is no longer needed.
 #
-# Multi-arquitectura: fijar por digest el índice multi-arquitectura cuando se
-# congele la release 3.14, así el mismo `docker buildx build` produce la imagen
-# correcta para linux/amd64 (Intel/AMD), linux/arm64 (Apple Silicon,
-# Android 64-bit) y arm/v7 (Android 32-bit) sin cambiar una línea.
+# Multi-arch: pin the multi-arch index by digest once the 3.14 release is
+# frozen, so the same `docker buildx build` produces the right image
+# for linux/amd64 (Intel/AMD), linux/arm64 (Apple Silicon,
+# Android 64-bit) and arm/v7 (Android 32-bit) without changing a line.
 #
-# Para construir para varias arquitecturas a la vez hace falta buildx:
+# Building for several architectures at once requires buildx:
 #     docker buildx build --platform linux/amd64,linux/arm64 -t gonnnzadev/recop .
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Etapa 1: builder
+# Stage 1: builder
 # ─────────────────────────────────────────────────────────────────────────────
 FROM python:3.14-slim-bookworm AS builder
 
@@ -25,14 +25,14 @@ ENV \
     UV_PYTHON_DOWNLOADS=never \
     UV_PROJECT_ENVIRONMENT=/opt/venv
 
-# uv es el gestor de dependencias. Se instala desde la imagen oficial, fijada por
-# digest para que una rebuild dentro de tres meses dé el mismo resultado.
+# uv is the dependency manager. It is installed from the official image, pinned
+# by digest so a rebuild three months from now gives the same result.
 COPY --from=ghcr.io/astral-sh/uv:0.13.0 /uv /uvx /usr/local/bin/
 
 WORKDIR /src
 
-# Primero solo los manifiestos: mientras no cambien, esta capa se cachea y las
-# builds following no reinstalan nada.
+# First only the manifests: while they don't change, this layer stays cached and
+# later builds reinstall nothing.
 COPY pyproject.toml uv.lock README.md ./
 
 COPY src/ ./src/
@@ -40,7 +40,7 @@ COPY src/ ./src/
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --locked --no-install-project --no-dev
 
-# Ahora sí, el código.
+# Now the code.
 COPY src/ ./src/
 COPY migrations/ ./migrations/
 COPY alembic.ini ./
@@ -50,17 +50,17 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Etapa 2: runtime
+# Stage 2: runtime
 # ─────────────────────────────────────────────────────────────────────────────
 FROM python:3.14-slim-bookworm AS runtime
 
-# tini como PID 1: sin él, SIGTERM no llega a Uvicorn y el contenedor tarda
-# 10 segundos en morir en cada `docker compose restart`. Con tini, el proceso
-# recibe la señal, Uvicorn cierra las conexiones WebSocket y sale limpio.
+# tini as PID 1: without it, SIGTERM never reaches Uvicorn and the container takes
+# 10 seconds to die on every `docker compose restart`. With tini, the process
+# receives the signal, Uvicorn closes the WebSocket connections and exits cleanly.
 #
-# libpq y ca-certificates: los necesita el driver síncrono de las migraciones
-# (psycopg). En runtime solo se usa asyncpg, pero el comando de migración se
-# ejecuta desde esta misma imagen.
+# libpq and ca-certificates: needed by the sync driver used for migrations
+# (psycopg). At runtime only asyncpg is used, but the migration command runs
+# from this same image.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         tini \
@@ -68,16 +68,16 @@ RUN apt-get update \
         ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-# Usuario sin privilegios. Un nodo es un proceso que corre en la PC de alguien;
-# no debería poder escribir en /usr ni crear usuarios.
+# Unprivileged user. A node is a process running on somebody's PC;
+# it should not be able to write to /usr or create users.
 RUN groupadd --system --gid 1001 recap \
     && useradd --system --uid 1001 --gid recap --home-dir /app --shell /usr/sbin/nologin recap
 
 WORKDIR /app
 
-# Entorno por defecto. Todo se puede sobreescribir con `-e` o compose.
-# `RECOP_HOST=0.0.0.0` es obligatorio en un container: si escucha en 127.0.0.1
-# el puerto publicado no llega a nadie.
+# Default environment. Everything can be overridden with `-e` or compose.
+# `RECOP_HOST=0.0.0.0` is mandatory in a container: listening on 127.0.0.1
+# means the published port reaches nobody.
 ENV \
     PATH="/opt/venv/bin:$PATH" \
     PYTHONUNBUFFERED=1 \
@@ -94,9 +94,9 @@ COPY --from=builder --chown=recap:recap /src/alembic.ini ./alembic.ini
 
 RUN mkdir -p /app/data && chown recap:recap /app/data
 
-# El entrypoint espera la base de datos, aplica migraciones y recién ahí se
-# convierte en el proceso de la API. `exec` en el script hace que PID 1 sea
-# Uvicorn y no el shell.
+# The entrypoint waits for the database, applies migrations, and only then
+# becomes the API process. `exec` in the script makes PID 1 Uvicorn,
+# not the shell.
 COPY --chown=recap:recap docker-entrypoint.sh /usr/local/bin/recop-entrypoint
 RUN chmod +x /usr/local/bin/recop-entrypoint
 
@@ -104,13 +104,13 @@ USER recap
 
 EXPOSE 7272
 
-# Liveness a propósito, no readiness: Docker solo sabe interpretar 200 y 503, y
-# `/health/ready` devuelve 503 mientras la base de datos todavía no responde,
-# lo que haría que Docker mate un contenedor que solo está arrancando. El
-# estado real de las dependencias ya está en `/health/ready`, que es lo que
-# consulta el resto del stack.
+# Liveness on purpose, not readiness: Docker only knows how to interpret 200 and
+# 503, and `/health/ready` returns 503 while the database is still not responding,
+# which would make Docker kill a container that is only just starting. The
+# real state of the dependencies is already in `/health/ready`, which is what
+# the rest of the stack queries.
 #
-# Forma de shell (no exec) a propósito: es la única que expande ${RECOP_PORT}.
+# Shell form (not exec) on purpose: the only one expanding ${RECOP_PORT}.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
     CMD python -c "import os,sys,urllib.request; url=f\"http://127.0.0.1:{os.environ.get('RECOP_PORT','7272')}/health\"; sys.exit(0 if urllib.request.urlopen(url, timeout=4).status == 200 else 1)"
 

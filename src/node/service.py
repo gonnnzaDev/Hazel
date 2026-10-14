@@ -1,8 +1,3 @@
-"""Node services: groups and their processes.
-
-Invariant: DB state must match process state; DB is written only after the process is up.
-"""
-
 from __future__ import annotations
 
 import logging
@@ -23,25 +18,18 @@ from servers.states import ServerStatus
 
 logger = logging.getLogger(__name__)
 
-#: Seconds to wait for a group process to become ready.
 GROUP_READY_TIMEOUT_SECONDS = 20.0
 
 
 def supervisor_from(request: Any) -> Any:
-    """Get supervisor from app.state; fails outside the node process. Uses request.app.state."""
     supervisor = getattr(getattr(request.app, "state", None), "supervisor", None)
     if supervisor is None:
         raise ConflictError(
-            "Este proceso no es el nodo, así que no puede manejar grupos. "
-            "Los grupos se manejan desde el proceso del nodo.",
+            "This process is not the node, so it cannot manage groups. "
+            "Groups are managed from the node process.",
             code="not_the_node",
         )
     return supervisor
-
-
-# ──────────────────────────────────────────────────────────────────────────────
-# Ports
-# ──────────────────────────────────────────────────────────────────────────────
 
 
 async def _allocate_port(
@@ -51,7 +39,6 @@ async def _allocate_port(
     preferred: int | None = None,
     ignoring: set[RecordId] | None = None,
 ) -> int | None:
-    """Find a free group port, avoiding DB-registered and live-process ports."""
     servers = await repository.all_servers(session)
     skip = ignoring or set()
     taken = {s.bind_port for s in servers if s.bind_port is not None and s.id not in skip}
@@ -60,23 +47,17 @@ async def _allocate_port(
     return next_available_port(get_settings(), preferred=preferred, taken=taken)
 
 
-# ──────────────────────────────────────────────────────────────────────────────
-# Deploy/start/stop/delete
-# ──────────────────────────────────────────────────────────────────────────────
-
-
 async def create_group(session: Any, supervisor: Any, payload: ServerCreate) -> Server:
-    """Deploy a group (deploy implies start). Marks active only after process is ready."""
     slug = normalize_slug(payload.slug)
     if not slug:
         raise ValidationDomainError(
-            "El identificador del grupo no puede quedar vacío.",
+            "The group identifier cannot be empty.",
             code="invalid_slug",
         )
 
     if await slug_taken(session, slug):
         raise ConflictError(
-            f"El identificador '{slug}' ya está en uso.",
+            f"The identifier '{slug}' is already in use.",
             code="slug_taken",
             extra={"slug": slug},
         )
@@ -84,12 +65,11 @@ async def create_group(session: Any, supervisor: Any, payload: ServerCreate) -> 
     port = await _allocate_port(session, supervisor)
     if port is None:
         raise ConflictError(
-            "No quedan puertos libres para un grupo más. "
-            "Subí RECOP_GROUP_PORT_END en el .env si necesitás más.",
+            "No free ports left for another group. "
+            "Raise RECOP_GROUP_PORT_END in the .env if you need more.",
             code="no_free_port",
         )
 
-    # Row built by servers.create_server to keep construction rules in one place.
     server = await servers_service.create_server(session, payload, port=port)
 
     await supervisor.spawn(server.id, port)
@@ -100,11 +80,11 @@ async def create_group(session: Any, supervisor: Any, payload: ServerCreate) -> 
     await session.flush()
 
     if ready:
-        logger.info("grupo %s desplegado y escuchando en el puerto %s", slug, port)
+        logger.info("group %s deployed and listening on port %s", slug, port)
     else:
         logger.error(
-            "el grupo %s quedó registrado pero su proceso no levantó. "
-            "Queda inactivo: se puede volver a encender desde el panel.",
+            "group %s was registered but its process did not start. "
+            "It stays inactive: it can be started again from the panel.",
             slug,
         )
 
@@ -112,12 +92,11 @@ async def create_group(session: Any, supervisor: Any, payload: ServerCreate) -> 
 
 
 async def start_group(session: Any, supervisor: Any, server_id: RecordId) -> Server:
-    """Start a stopped group; already-running is a no-op."""
     server = await get_server(session, server_id)
 
     if server.status is ServerStatus.DELETED:
         raise ConflictError(
-            "Este grupo fue eliminado y no se puede volver a encender.",
+            "This group was deleted and cannot be started again.",
             code="server_deleted",
             extra={"server_id": str(server.id)},
         )
@@ -133,7 +112,7 @@ async def start_group(session: Any, supervisor: Any, server_id: RecordId) -> Ser
     )
     if port is None:
         raise ConflictError(
-            "No queda ningún puerto libre para encender este grupo.",
+            "No free port left to start this group.",
             code="no_free_port",
         )
 
@@ -145,12 +124,11 @@ async def start_group(session: Any, supervisor: Any, server_id: RecordId) -> Ser
     server.last_heartbeat_at = utcnow() if ready else None
     await session.flush()
 
-    logger.info("grupo %s encendido en el puerto %s", server.slug, port)
+    logger.info("group %s started on port %s", server.slug, port)
     return server
 
 
 async def stop_group(session: Any, supervisor: Any, server_id: RecordId) -> Server:
-    """Stop a group without deleting data; port stays reserved."""
     server = await get_server(session, server_id)
 
     await supervisor.terminate(server_id)
@@ -158,28 +136,21 @@ async def stop_group(session: Any, supervisor: Any, server_id: RecordId) -> Serv
     server.status = ServerStatus.INACTIVE
     await session.flush()
 
-    logger.info("grupo %s apagado; sus datos siguen intactos", server.slug)
+    logger.info("group %s stopped; its data remains intact", server.slug)
     return server
 
 
 async def delete_group(session: Any, supervisor: Any, server_id: RecordId) -> None:
-    """Permanently delete a group; terminate the process first to free the port."""
     server = await get_server(session, server_id)
 
     await supervisor.terminate(server_id)
     await session.delete(server)
     await session.flush()
 
-    logger.info("grupo %s eliminado", server.slug)
-
-
-# ──────────────────────────────────────────────────────────────────────────────
-# State
-# ──────────────────────────────────────────────────────────────────────────────
+    logger.info("group %s deleted", server.slug)
 
 
 def process_state(supervisor: Any, server: Server) -> dict[str, object]:
-    """Live process state for the panel; separate from DB status to surface crashes."""
     group = supervisor.status(server.id)
 
     if group is None:
@@ -194,14 +165,12 @@ def process_state(supervisor: Any, server: Server) -> dict[str, object]:
 
 
 def group_address(server: Server) -> dict[str, object]:
-    """Shareable address for this group (group port + node host)."""
     addresses = local_addresses()
     recommended = addresses[0].host if addresses else None
 
     return {
         "slug": server.slug,
         "port": server.bind_port,
-        # Host comes from node settings, not a group column.
         "host": get_settings().host,
         "is_reachable": server.status.accepts_traffic,
         "recommended_host": recommended,
@@ -210,15 +179,14 @@ def group_address(server: Server) -> dict[str, object]:
 
 
 def ensure_can_manage(actor_role: int, *, deleting: bool = False) -> None:
-    """Only node owner manages groups; deleting requires OWNER."""
     if actor_role < Role.ADMIN:
         raise PermissionDeniedError(
-            "Necesitás ser administrador para manejar los grupos del nodo.",
+            "You must be an administrator to manage the node's groups.",
             code="not_admin",
         )
     if deleting and actor_role is not Role.OWNER:
         raise PermissionDeniedError(
-            "Solo el dueño del nodo puede eliminar un grupo.",
+            "Only the node owner can delete a group.",
             code="owner_required",
         )
 
@@ -235,13 +203,7 @@ __all__ = [
 ]
 
 
-# ──────────────────────────────────────────────────────────────────────────────
-# Node card
-# ──────────────────────────────────────────────────────────────────────────────
-
-
 def node_info() -> dict[str, object]:
-    """Describe this process; queried first by clients."""
     from core import __version__
 
     settings = get_settings()
@@ -251,14 +213,12 @@ def node_info() -> dict[str, object]:
         "environment": settings.env,
         "bind_host": settings.host,
         "bind_port": settings.port,
-        # Responding implies listening.
         "is_listening": True,
         "kafka_topic_prefix": settings.kafka_topic_prefix,
     }
 
 
 def node_address() -> dict[str, object]:
-    """Node process address: port plus reachable machine interfaces."""
     settings = get_settings()
     addresses = local_addresses()
 

@@ -1,5 +1,3 @@
-"""Server and channel models."""
-
 from __future__ import annotations
 
 from datetime import datetime
@@ -28,25 +26,17 @@ from servers.states import ServerStatus
 
 
 def _enum_values(enum_cls: type[StrEnum]) -> list[str]:
-    """Enum values (not member names) for the Postgres type."""
     return [member.value for member in enum_cls]
 
 
 class ChannelKind(StrEnum):
-    """Chat room kind."""
 
     TEXT = "text"
 
     VOICE = "voice"
-    """Voice channel (no audio model yet)."""
 
 
 class Server(Base):
-    """A group running in its own process on its own port (fault isolation).
-
-    Ports come from RECOP_PORT + 1; the node process keeps its own port.
-    The DB status must match the process state; the supervisor enforces that.
-    """
 
     __tablename__ = "servers"
 
@@ -55,7 +45,6 @@ class Server(Base):
     name: Mapped[str] = mapped_column(String(64), nullable=False)
 
     slug: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
-    """Shareable readable identifier (e.g. `casa-de-luis`)."""
 
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
 
@@ -65,18 +54,14 @@ class Server(Base):
         default=ServerStatus.CREATING,
         index=True,
     )
-    """Lifecycle state; see `servers/states.py`."""
 
     bind_port: Mapped[int] = mapped_column(Integer, nullable=False)
-    """Port, assigned by the node process at creation."""
 
     max_members: Mapped[int] = mapped_column(SmallInteger, nullable=False, default=50)
-    """Member cap; guards the owner's machine."""
 
     last_heartbeat_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
-    """Last process heartbeat; distinguishes stopped from crashed."""
 
     channels: Mapped[list[Channel]] = relationship(
         back_populates="server",
@@ -97,7 +82,6 @@ class Server(Base):
 
 
 class Channel(Base):
-    """A chat room inside a server."""
 
     __tablename__ = "channels"
 
@@ -120,10 +104,8 @@ class Channel(Base):
     topic: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
     position: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    """Display order in the client sidebar."""
 
     is_default: Mapped[bool] = mapped_column(nullable=False, default=False)
-    """Auto-join channel; exactly one per server."""
 
     server: Mapped[Server] = relationship(back_populates="channels")
 
@@ -134,7 +116,6 @@ class Channel(Base):
 
 
 class Message(Base):
-    """A text message in a server channel."""
 
     __tablename__ = "messages"
 
@@ -147,7 +128,6 @@ class Message(Base):
     )
 
     author_nickname: Mapped[str] = mapped_column(String(64), nullable=False)
-    """Author nickname as recorded at send time."""
 
     content: Mapped[str] = mapped_column(Text, nullable=False)
 

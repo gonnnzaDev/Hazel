@@ -1,27 +1,27 @@
 ﻿<#
 .SYNOPSIS
-    Recop — instalación para Windows.
+    Recop — Windows installation.
 
 .DESCRIPTION
-    Equivalentee a scripts/setup.sh, en PowerShell.
+    Equivalent to scripts/setup.sh, in PowerShell.
 
-    Cubre Windows 10 y 11 con PowerShell 5.1 (el que viene con Windows) y
-    PowerShell 7+.
+    Covers Windows 10 and 11 with PowerShell 5.1 (the one shipping with Windows)
+    and PowerShell 7+.
 
-    Qué hace, en orden:
-      1. Chequea que falte lo mínimo
-      2. Instala uv si no está (uv trae su propio Python)
-      3. Instala las dependencias exactas que define uv.lock
-      4. Crea el .env con un secreto generado
-      5. Levanta PostgreSQL y Kafka con Docker, si hay Docker
+    What it does, in order:
+      1. Checks the bare minimum
+      2. Installs uv if missing (uv brings its own Python)
+      3. Installs the exact dependencies pinned in uv.lock
+      4. Creates the .env with a generated secret
+      5. Starts PostgreSQL and Kafka with Docker, if Docker is available
 
-    Es idempotente: correrlo dos veces no rompe nada.
+    It is idempotent: running it twice breaks nothing.
 
 .EXAMPLE
     .\scripts\setup.ps1
 
 .NOTES
-    Si PowerShell bloquea la ejecución de scripts:
+    If PowerShell blocks script execution:
         powershell -ExecutionPolicy Bypass -File .\scripts\setup.ps1
 #>
 
@@ -35,7 +35,7 @@ Set-StrictMode -Version Latest
 $ProjectDir = Split-Path -Parent $PSScriptRoot
 Set-Location $ProjectDir
 
-# ─── Presentación ─────────────────────────────────────────────────────────────
+# ─── Presentation ─────────────────────────────────────────────────────────────
 
 $UseColor = -not $env:NO_COLOR -and $Host.UI.SupportsVirtualTerminal
 
@@ -60,34 +60,34 @@ function Die { param([string]$Message)
     exit 1
 }
 
-# ─── 1. Plataforma ────────────────────────────────────────────────────────────
+# ─── 1. Platform ────────────────────────────────────────────────────────────
 
-Write-Step "Detectando la plataforma"
+Write-Step "Detecting the platform"
 
-# Windows en ARM corre las mismas imágenes linux/arm64 del contenedor vía
-# Docker Desktop; el host igual es Windows.
+# Windows on ARM runs the same linux/arm64 container images via
+# Docker Desktop; the host is still Windows.
 $Arch = $env:PROCESSOR_ARCHITECTURE
 Write-Ok "windows / $Arch"
 
 if ($Arch -eq "ARM64") {
-    Write-Info "vas a necesitar Docker Desktop en modo Windows containers."
+    Write-Info "you will need Docker Desktop in Windows containers mode."
 }
 
-# ─── 2. Prerrequisitos ────────────────────────────────────────────────────────
+# ─── 2. Prerequisites ────────────────────────────────────────────────────────
 
-Write-Step "Chequeando lo mínimo"
+Write-Step "Checking the bare minimum"
 
 if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
-    Die "necesitás Git para Windows. Bajalo de https://git-scm.com/download/win y volvé a correr."
+    Die "you need Git for Windows. Get it from https://git-scm.com/download/win and run again."
 }
 Write-Info "git OK"
 
 # ─── 3. uv ────────────────────────────────────────────────────────────────────
 
 function Install-Uv {
-    Write-Info "instalando uv..."
+    Write-Info "installing uv..."
 
-    # El instalador oficial detecta Windows y usa el instalador .exe.
+    # The official installer detects Windows and uses the .exe installer.
     $installer = Join-Path $env:TEMP "uv-installer.ps1"
     try {
         Invoke-WebRequest -Uri "https://astral.sh/uv/install.ps1" -OutFile $installer -UseBasicParsing
@@ -106,54 +106,54 @@ function Install-Uv {
     return [bool](Get-Command uv -ErrorAction SilentlyContinue)
 }
 
-Write-Step "Instalando uv (el gestor de dependencias)"
+Write-Step "Installing uv (the dependency manager)"
 if (Get-Command uv -ErrorAction SilentlyContinue) {
     $v = (& uv --version) -split ' ' | Select-Object -Last 1
     Write-Ok "uv $v"
 } else {
     if (-not (Install-Uv)) {
-        Die "no pude instalar uv. Bajalo de https://docs.astral.sh/uv/getting-started/installation/"
+        Die "could not install uv. Get it from https://docs.astral.sh/uv/getting-started/installation/"
     }
     $v = (& uv --version) -split ' ' | Select-Object -Last 1
     Write-Ok "uv $v"
 }
 
-Write-Info "uv trae su propio Python, así que no hace falta que tengas Python instalado."
+Write-Info "uv brings its own Python, so you don't need Python installed."
 
-# ─── 4. Dependencias ──────────────────────────────────────────────────────────
+# ─── 4. Dependencies ──────────────────────────────────────────────────────────
 
-Write-Step "Instalando las dependencias"
+Write-Step "Installing dependencies"
 
-# uv sync usa uv.lock: lista exacta de versiones. Todos los que corran este
-# script instalan lo mismo, sin importar cuándo lo corren.
+# uv sync uses uv.lock: an exact list of versions. Everyone running this
+# script installs the same thing, no matter when they run it.
 Push-Location $ProjectDir
 try {
     & uv sync --locked 2>&1 | ForEach-Object { Write-Info $_ }
     if ($LASTEXITCODE -ne 0) {
-        Die "falló la instalación de dependencias. Revisá el error de arriba."
+        Die "dependency installation failed. Check the error above."
     }
-    Write-Ok "dependencias instaladas (exactas, desde uv.lock)"
+    Write-Ok "dependencies installed (exact, from uv.lock)"
 } finally {
     Pop-Location
 }
 
-# ─── 5. Configuración ─────────────────────────────────────────────────────────
+# ─── 5. Configuration ─────────────────────────────────────────────────────────
 
-Write-Step "Preparando la configuración"
+Write-Step "Preparing configuration"
 
 if (Test-Path ".env") {
-    Write-Ok ".env ya existe, no lo toco"
+    Write-Ok ".env already exists, leaving it alone"
 } else {
-    # El compose falla a propósito si RECOP_SECRET_KEY no esta. Generamos una de
-    # verdad para que el primer arranque funcione sin pasos extra.
+    # Compose fails on purpose when RECOP_SECRET_KEY is missing. We generate a
+    # real one so the first start works with no extra steps.
     $bytes = New-Object byte[] 32
     [System.Security.Cryptography.RandomNumberGenerator]::Fill($bytes)
     $Secret = [Convert]::ToBase64String($bytes).TrimEnd('=').Replace('+', '-').Replace('/', '_')
 
-    # Defaults espejo de src/core/config.py: lo único que debe ser único por
-    # instalación es el secreto.
+    # Defaults mirroring src/core/config.py: the only thing that must be unique
+    # per install is the secret.
     $content = @(
-        "# Recop — configuración local (generada por setup.ps1; NUNCA commitear).",
+        "# Recop — local configuration (generated by setup.ps1; NEVER commit).",
         "RECOP_ENV=local",
         "RECOP_DEBUG=true",
         "RECOP_SECRET_KEY=$Secret",
@@ -188,15 +188,15 @@ if (Test-Path ".env") {
         "RECOP_RATE_LIMIT_MESSAGES_PER_MINUTE=20",
         "RECOP_MAX_MESSAGE_BYTES=4000"
     )
-    # Set-Content escribe en UTF-8 sin BOM desde PowerShell 5.1 con -Encoding UTF8.
+    # Set-Content writes UTF-8 without BOM since PowerShell 5.1 with -Encoding UTF8.
     $content | Set-Content ".env" -Encoding UTF8
 
-    Write-Ok ".env creado con un secreto generado"
+    Write-Ok ".env created with a generated secret"
 }
 
 # ─── 6. Docker ────────────────────────────────────────────────────────────────
 
-Write-Step "Buscando Docker"
+Write-Step "Looking for Docker"
 
 $HaveDocker = $false
 if (Get-Command docker -ErrorAction SilentlyContinue) {
@@ -206,19 +206,19 @@ if (Get-Command docker -ErrorAction SilentlyContinue) {
         $dv = & docker version --format "{{.Server.Version}}"
         Write-Ok "docker $dv"
     } else {
-        Write-Warn "docker está instalado pero el daemon no responde."
-        Write-Warn "Abrí Docker Desktop y volvé a correr este script."
+        Write-Warn "docker is installed but the daemon is not responding."
+        Write-Warn "Open Docker Desktop and run this script again."
     }
 } else {
-    Write-Warn "no encontré Docker."
-    Write-Warn "Bajalo de https://www.docker.com/products/docker-desktop/"
+    Write-Warn "no Docker found."
+    Write-Warn "Get it from https://www.docker.com/products/docker-desktop/"
 }
 
 if ($HaveDocker) {
-    Write-Step "Levantando PostgreSQL y Kafka"
+    Write-Step "Starting PostgreSQL and Kafka"
     & docker compose -f docker-compose.dev.yml up -d 2>&1 | ForEach-Object { Write-Info $_ }
     if ($LASTEXITCODE -eq 0) {
-        Write-Info "esperando a que PostgreSQL responda..."
+        Write-Info "waiting for PostgreSQL to respond..."
         $User = "recop"
         foreach ($line in (Get-Content ".env" -ErrorAction SilentlyContinue)) {
             if ($line -match '^POSTGRES_USER=(.*)$') { $User = $Matches[1]; break }
@@ -228,17 +228,17 @@ if ($HaveDocker) {
             if ($LASTEXITCODE -eq 0) { break }
             Start-Sleep -Seconds 1
         }
-        Write-Ok "PostgreSQL y Kafka levantados"
+        Write-Ok "PostgreSQL and Kafka are up"
 
-        Write-Step "Aplicando migraciones"
+        Write-Step "Applying migrations"
         & uv run alembic upgrade head 2>&1 | ForEach-Object { Write-Info $_ }
         if ($LASTEXITCODE -eq 0) {
-            Write-Ok "base de datos lista"
+            Write-Ok "database ready"
         } else {
-            Write-Warn "fallaron las migraciones. Corré 'uv run alembic upgrade head' cuando la base esté arriba."
+            Write-Warn "migrations failed. Run 'uv run alembic upgrade head' once the database is up."
         }
     } else {
-        Write-Warn "no pude levantar los servicios."
+        Write-Warn "could not start the services."
     }
 }
 
@@ -256,25 +256,25 @@ $Dim = if ($UseColor) { "`e[2m" } else { "" }
 
 Write-Host @"
 
-$Green$Bold`Listo.$Reset
+$Green$Bold`Done.$Reset
 
-  ${Bold}Arrancar el nodo$Reset
+  ${Bold}Start the node$Reset
     uv run python -m core
 
-  Y despues, en otra terminal:
+  Then, in another terminal:
 
-    ${Dim}curl localhost:$Port/docs$Reset        la API documentada
-    ${Dim}curl localhost:$Port/api/v1/node$Reset   la dirección para compartir
+    ${Dim}curl localhost:$Port/docs$Reset        the documented API
+    ${Dim}curl localhost:$Port/api/v1/node$Reset   the address to share
 
-  ${Bold}Sin Docker${Reset}: apuntá RECOP_DATABASE_URL y RECOP_KAFKA_BOOTSTRAP_SERVERS
-  en el .env a unas bases de datos que ya tengas, y corré las migraciones.
+  ${Bold}Without Docker${Reset}: point RECOP_DATABASE_URL and RECOP_KAFKA_BOOTSTRAP_SERVERS
+  in the .env to databases you already have, and run the migrations.
 
-  ${Bold}Los cuatro estados de un servidor$Reset
-    Apagado o caído  → puerto cerrado, datos intactos
-    Encendido        → puerto abierto, datos intactos
-    Eliminado        → puerto cerrado, datos borrados
+  ${Bold}The four states of a server$Reset
+    Off or down  → port closed, data intact
+    On           → port open, data intact
+    Deleted      → port closed, data deleted
 
-  ${Bold}Ayuda$Reset
-    .\scripts\recop.ps1 help      lista los comandos
+  ${Bold}Help$Reset
+    .\scripts\recop.ps1 help      list the commands
 
 "@
