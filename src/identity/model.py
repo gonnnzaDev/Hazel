@@ -16,12 +16,12 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from apps.common.types import RecordId, new_id, utcnow
-from apps.identity.roles import Role
+from common.types import RecordId, new_id, utcnow
 from core.db.base import Base
+from identity.roles import Role
 
 if TYPE_CHECKING:
-    from apps.servers.models import Server
+    from servers.model import Server
 
 
 class Member(Base):
@@ -44,7 +44,7 @@ class Member(Base):
     """User-chosen visible name; nickname is the key."""
 
     role: Mapped[int] = mapped_column(SmallInteger, nullable=False, default=Role.MEMBER)
-    """Server role; see apps.identity.roles."""
+    """Server role; see identity.roles."""
 
     is_online: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     """True while a WebSocket connection is open."""

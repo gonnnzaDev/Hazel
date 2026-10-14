@@ -1,6 +1,6 @@
 """Recop core: config, infrastructure, app factory.
 
-No business logic here; product code lives under `apps/`.
+No business logic here; product code lives under `src/`.
 """
 
 __all__ = ["__version__"]

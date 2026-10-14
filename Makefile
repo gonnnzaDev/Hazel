@@ -66,7 +66,7 @@ format: ## Formatear
 	uv run ruff format .
 
 typecheck: ## Chequeo de tipos
-	uv run mypy apps core
+	uv run mypy src
 
 check: lint format typecheck test ## Ejecutar todo
 

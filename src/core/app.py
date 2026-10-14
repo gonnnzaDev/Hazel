@@ -104,8 +104,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-        from apps.servers.services import mark_all_inactive
         from core.db.session import dispose_engine, session_scope
+        from servers.repository import mark_all_inactive
 
         try:
             async with session_scope() as session:

@@ -14,18 +14,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from starlette.websockets import WebSocketDisconnect
 
-from apps.common.types import RecordId
-from apps.identity import services as identity_services
-from apps.identity.deps import CurrentMember
-from apps.servers import services as servers_services
-from apps.servers.calls import (
-    Peer,
-    call_manager,
-    is_forwardable,
-    message_kind,
-    parse_signal,
-)
-from apps.servers.models import Channel
+from common.types import RecordId
 from core.api.deps import SettingsDep
 from core.api.errors import (
     AuthenticationError,
@@ -33,6 +22,17 @@ from core.api.errors import (
     PermissionDeniedError,
 )
 from core.db.session import session_scope
+from identity import service as identity_service
+from identity.deps import CurrentMember
+from servers import repository as servers_repository
+from servers.calls import (
+    Peer,
+    call_manager,
+    is_forwardable,
+    message_kind,
+    parse_signal,
+)
+from servers.model import Channel
 
 router = APIRouter()
 
@@ -61,8 +61,8 @@ async def resolve_identity(server_id: str, channel_id: str, token: str) -> CallI
         ) from None
 
     async with session_scope() as session:
-        member = await identity_services.authenticate(session, token)
-        server = await servers_services.get_server(session, sid)
+        member = await identity_service.authenticate(session, token)
+        server = await servers_repository.get_server(session, sid)
 
         if member.server_id != server.id:
             raise PermissionDeniedError(

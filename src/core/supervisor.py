@@ -16,7 +16,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
 
-from apps.common.types import RecordId
+from common.types import RecordId
 
 logger = logging.getLogger(__name__)
 
