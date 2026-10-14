@@ -39,8 +39,8 @@ stack-down: ## Parar el stack
 stack-logs: ## Logs del nodo
 	docker compose logs -f api
 
-api: ## Levantar la API con recarga
-	uv run python -m core --reload
+api: ## Levantar tu nodo (puerto 7272)
+	uv run python -m core node
 
 front: ## Abrir el cliente de escritorio (Electron)
 	@test -d front/node_modules || (cd front && npm install)
