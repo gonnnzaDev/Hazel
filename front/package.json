@@ -1,0 +1,20 @@
+{
+  "name": "recop-desktop",
+  "productName": "Recop",
+  "version": "0.1.0",
+  "description": "Cliente de escritorio de Recop: tu chat, tu máquina, tu puerto.",
+  "main": "dist/main.js",
+  "private": true,
+  "license": "GPL-3.0-or-later",
+  "scripts": {
+    "build": "node build.mjs",
+    "typecheck": "tsc -p tsconfig.json && tsc -p src/main/tsconfig.json",
+    "start": "npm run build && electron .",
+    "dev": "npm run build && electron . --dev"
+  },
+  "devDependencies": {
+    "electron": "^44.7.0",
+    "esbuild": "^0.28.2",
+    "typescript": "^7.0.2"
+  }
+}

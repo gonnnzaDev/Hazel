@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self' http: https: ws: wss:; media-src 'self' blob: mediastream:"
+    />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Recop</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="app" id="app">
+      <nav class="rail" id="rail" aria-label="Servidores"></nav>
+      <aside class="sidebar" id="sidebar"></aside>
+      <main class="main" id="main"></main>
+      <aside class="members" id="members" aria-label="Miembros"></aside>
+    </div>
+
+    <div id="modal-root"></div>
+    <div id="popover-root"></div>
+    <div class="toasts" id="toasts" aria-live="polite"></div>
+    <div id="audio-sink" hidden></div>
+
+    <script src="app.js"></script>
+  </body>
+</html>
