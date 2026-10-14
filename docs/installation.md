@@ -1,7 +1,8 @@
 # Installation
 
 One command on all four platforms. Scripts do the same everywhere and end with
-the same environment, because versions come from `uv.lock` and `.python-version`.
+the same environment, because versions come from `uv.lock` and
+`requires-python` in `pyproject.toml`.
 
 | Platform | Command | Prerequisites |
 |---|---|---|
@@ -10,9 +11,8 @@ the same environment, because versions come from `uv.lock` and `.python-version`
 | Windows | `.\scripts\setup.ps1` | Git for Windows |
 | Android | `./scripts/setup.sh` in Termux | `git`, `curl` |
 
-**No need to have Python installed.** `uv` brings its own Python interpreter,
-and `.python-version` pins which one. That's why everyone ends with exactly the
-same version.
+**No need to have Python installed.** `uv` brings its own Python interpreter
+matching `requires-python` in `pyproject.toml`.
 
 ---
 
@@ -145,8 +145,8 @@ it doesn't touch it.
 
 That everyone has the same isn't promised, it's mechanical:
 
-- **Python**: `.python-version` says `3.14`. `uv` downloads that version if it
-  doesn't have it.
+- **Python**: `requires-python` in `pyproject.toml` says `>=3.14`. `uv`
+  downloads a matching version if it doesn't have one.
 - **Dependencies**: `uv.lock` pins the exact version of each package, with
   hashes. `uv sync --locked` fails if the lock doesn't match `pyproject.toml`,
   so nobody can accidentally install a different version.
