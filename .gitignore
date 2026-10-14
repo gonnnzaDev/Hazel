@@ -25,7 +25,6 @@ coverage.xml
 # ─── Configuración local (NUNCA commitear) ────────────────────────────────────
 .env
 .env.*
-!.env.example
 *.pem
 *.key
 

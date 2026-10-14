@@ -37,7 +37,7 @@ Recop es un chat como Discord, pero **sin nadie en el medio**. No hay empresa ni
 ```bash
 git clone https://github.com/gonnnzaDev/recop
 cd recop
-cp .env.example .env
+./scripts/setup.sh
 docker compose up
 ```
 
@@ -47,7 +47,7 @@ docker compose up
 git clone https://github.com/gonnnzaDev/recop
 cd recop
 uv sync
-cp .env.example .env
+echo "RECOP_SECRET_KEY=$(python3 -c 'import secrets; print(secrets.token_urlsafe(32))')" > .env
 docker compose up -d
 uv run alembic upgrade head
 uv run python -m core

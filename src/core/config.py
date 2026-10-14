@@ -141,9 +141,9 @@ def get_settings() -> Settings:
             raise SystemExit(
                 "Faltan variables de configuración obligatorias: "
                 f"{', '.join(missing)}\n"
-                f"Revisá tu .env o copiá {REPO_ROOT / '.env.example'} a {REPO_ROOT / '.env'}."
+                "Generá tu .env con ./scripts/setup.sh o definí las variables en el entorno."
             ) from exc
         raise SystemExit(
             f"La configuración es inválida:\n{exc}\n"
-            f"Revisá tu .env contra {REPO_ROOT / '.env.example'}."
+            "Revisá tu .env contra las variables documentadas en docs/installation.md."
         ) from exc
