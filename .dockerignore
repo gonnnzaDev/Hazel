@@ -47,8 +47,6 @@ kafka_data/
 
 # ─── Desarrollo: no va a runtime ──────────────────────────────────────────────
 tests/
-# El cliente de escritorio no va en la imagen del nodo (y su node_modules pesa ~300 MB).
-front/
 Makefile
 docker-compose.yml
 docker-compose.dev.yml

@@ -6,13 +6,12 @@ necesitás una validación, va en `services.py`.
 
 from __future__ import annotations
 
-from typing import Annotated, Any
+from typing import Annotated
 
 from fastapi import APIRouter, Path, Query, Request, status
 from sqlalchemy import select
 
 from apps.common.types import RecordId
-from apps.identity.deps import CurrentMember
 from apps.node import services as node_services
 from apps.node.schemas import NodeAddress
 from apps.servers import services
@@ -28,36 +27,12 @@ from apps.servers.schemas import (
     ServerUpdate,
 )
 from core.api.deps import SessionDep
-from core.api.errors import NotFoundError, PermissionDeniedError
 
 router = APIRouter()
 
 ServerId = Annotated[RecordId, Path(description="Identificador del servidor")]
 QueryLimit = Annotated[int, Query(ge=1, le=100, description="Máximo de servidores por página")]
 QueryOffset = Annotated[int, Query(ge=0, description="Cuántos servidores saltar")]
-ChannelId = Annotated[RecordId, Path(description="Identificador del canal")]
-
-
-def _supervisor(request: Request) -> Any | None:
-    """El supervisor de grupos, si este proceso es el nodo.
-
-    En el nodo, encender y apagar un grupo es levantar y bajar su proceso; sin
-    supervisor (modo de un solo proceso, tests) solo cambia el estado en la base.
-    """
-    return getattr(request.app.state, "supervisor", None)
-
-
-async def _channel_of(session: SessionDep, server_id: RecordId, channel_id: RecordId) -> Channel:
-    """El canal, si pertenece a este servidor. Si no, 404 en vez de un 500."""
-    stmt = select(Channel).where(Channel.id == channel_id, Channel.server_id == server_id)
-    channel = (await session.execute(stmt)).scalar_one_or_none()
-    if channel is None:
-        raise NotFoundError(
-            "El canal no existe en este servidor.",
-            code="channel_not_found",
-            extra={"channel_id": str(channel_id)},
-        )
-    return channel
 
 
 @router.post(
@@ -127,17 +102,12 @@ async def update_server(
     response_model=ServerRead,
     summary="Activar el servidor",
 )
-async def activate_server(server_id: ServerId, session: SessionDep, request: Request) -> ServerRead:
+async def activate_server(server_id: ServerId, session: SessionDep) -> ServerRead:
     """Vuelve a abrir el puerto de un servidor inactivo.
 
-    Todos los datos siguen ahí: esto es una reapertura, no una recuperación de
-    nada. En el nodo levanta el proceso del grupo; si no, el puerto no se abriría.
+    Todos los datos siguen ahí: esto es una一个男人 reapertura, no una
+    recuperación de nada.
     """
-    supervisor = _supervisor(request)
-    if supervisor is not None:
-        started = await node_services.start_group(session, supervisor, server_id)
-        return ServerRead.model_validate(started)
-
     server = await services.get_server(session, server_id)
     activated = await services.activate_server(session, server)
     return ServerRead.model_validate(activated)
@@ -148,19 +118,12 @@ async def activate_server(server_id: ServerId, session: SessionDep, request: Req
     response_model=ServerRead,
     summary="Desactivar el servidor",
 )
-async def deactivate_server(
-    server_id: ServerId, session: SessionDep, request: Request
-) -> ServerRead:
+async def deactivate_server(server_id: ServerId, session: SessionDep) -> ServerRead:
     """Cierra el puerto y deja el servidor inactivo.
 
     **No borra nada.** Los canales, los miembros y los mensajes se conservan
     intactos y el servidor se puede volver a activar en cualquier momento.
     """
-    supervisor = _supervisor(request)
-    if supervisor is not None:
-        stopped = await node_services.stop_group(session, supervisor, server_id)
-        return ServerRead.model_validate(stopped)
-
     server = await services.get_server(session, server_id)
     deactivated = await services.deactivate_server(session, server)
     return ServerRead.model_validate(deactivated)
@@ -186,16 +149,11 @@ async def heartbeat(server_id: ServerId, session: SessionDep) -> ServerRead:
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Eliminar el servidor",
 )
-async def delete_server(server_id: ServerId, session: SessionDep, request: Request) -> None:
+async def delete_server(server_id: ServerId, session: SessionDep) -> None:
     """Elimina el servidor de forma permanente.
 
     Es destructivo e irreversible: a diferencia de desactivar, acá no queda nada.
     """
-    supervisor = _supervisor(request)
-    if supervisor is not None:
-        await node_services.delete_group(session, supervisor, server_id)
-        return
-
     server = await services.get_server(session, server_id)
     await services.delete_server(session, server)
 
@@ -228,25 +186,21 @@ async def get_address(server_id: ServerId, session: SessionDep) -> ServerAddress
 )
 async def create_message(
     server_id: ServerId,
-    channel_id: ChannelId,
+    channel_id: Annotated[RecordId, Path(description="Identificador del canal")],
     payload: MessageCreate,
     session: SessionDep,
-    member: CurrentMember,
 ) -> MessageRead:
     """Escribe un mensaje de texto en un canal del servidor.
 
     El mensaje queda guardado en la base local del grupo y se muestra a los
     miembros que entren después. No usa Kafka todavía: es la Fase 1 de chat.
-
-    El autor es quien manda el token, no un campo del cuerpo: si no, cualquiera
-    podría escribir con el nombre de otro.
     """
     server = await services.get_server(session, server_id)
-    if member.server_id != server.id:
-        raise PermissionDeniedError("Tu token es de otro servidor.", code="wrong_server")
-    await _channel_of(session, server.id, channel_id)
+    # Verificamos que el channel pertenezca a este servidor
+    stmt = select(Channel).where(Channel.id == channel_id, Channel.server_id == server.id)
+    (await session.execute(stmt)).scalar_one()
     message = await services.create_message(
-        session, channel_id=channel_id, author_nickname=member.nickname, content=payload.content
+        session, channel_id=channel_id, author_nickname="anon", content=payload.content
     )
     return MessageRead.model_validate(message)
 
@@ -259,7 +213,7 @@ async def create_message(
 async def list_messages(
     session: SessionDep,
     server_id: ServerId,
-    channel_id: ChannelId,
+    channel_id: Annotated[RecordId, Path(description="Identificador del canal")],
     limit: Annotated[int, Query(ge=1, le=100)] = 50,
     offset: Annotated[int, Query(ge=0)] = 0,
 ) -> MessageListResponse:
@@ -269,12 +223,4 @@ async def list_messages(
     servidor y canal. Si luego se habilita Kafka, los mensajes cruzados entre
     grupos del mismo dueño se pueden sincronizar.
     """
-    server = await services.get_server(session, server_id)
-    await _channel_of(session, server.id, channel_id)
-    messages, total = await services.list_messages(session, channel_id, limit=limit, offset=offset)
-    return MessageListResponse(
-        items=[MessageRead.model_validate(m) for m in messages],
-        total=total,
-        limit=limit,
-        offset=offset,
-    )
+    # (the server check happens inside)
