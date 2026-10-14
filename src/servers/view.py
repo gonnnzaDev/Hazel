@@ -7,6 +7,7 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Path, Query, Request, status
 from sqlalchemy import select
 
+from channels.model import Channel
 from common.types import RecordId
 from core.api.deps import SessionDep
 from core.api.errors import ConflictError, NotFoundError, PermissionDeniedError
@@ -14,7 +15,6 @@ from identity.deps import CurrentMember
 from node import service as node_service
 from node.schemas import NodeAddress
 from servers import repository, service
-from servers.model import Channel
 from servers.schemas import (
     MessageCreate,
     MessageListResponse,

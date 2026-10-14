@@ -26,6 +26,8 @@ INSTALLED_APPS: tuple[AppConfig, ...] = (
     AppConfig(name="identity", router=identity_router, tags=("identity",)),
     AppConfig(name="servers", router=servers_router, prefix="/servers", tags=("servers",)),
     AppConfig(name="calls", router=calls_router, prefix="/servers", tags=("calls",)),
+    AppConfig(name="channels", router=APIRouter(), prefix="/servers", tags=("channels",)),
+    AppConfig(name="messages", router=APIRouter(), prefix="/servers", tags=("messages",)),
 )
 
 
