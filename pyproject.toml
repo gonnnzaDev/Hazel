@@ -3,7 +3,7 @@ name = "recop"
 version = "0.1.0"
 description = "Chat autoservido. Tu servidor, tu máquina, tu puerto."
 readme = "README.md"
-requires-python = ">=3.13"
+requires-python = ">=3.14"
 license = { text = "UNLICENSED" }
 
 dependencies = [
@@ -54,7 +54,7 @@ filterwarnings = ["error", "ignore::DeprecationWarning"]
 # ──────────────────────────────────────────────────────────────────────────────
 [tool.ruff]
 line-length = 100
-target-version = "py313"
+target-version = "py314"
 src = ["apps", "core", "tests"]
 
 [tool.ruff.lint]
@@ -94,7 +94,7 @@ known-first-party = ["apps", "core"]
 # mypy
 # ──────────────────────────────────────────────────────────────────────────────
 [tool.mypy]
-python_version = "3.13"
+python_version = "3.14"
 strict = true
 plugins = ["pydantic.mypy"]
 mypy_path = "."

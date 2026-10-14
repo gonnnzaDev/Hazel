@@ -145,7 +145,7 @@ it doesn't touch it.
 
 That everyone has the same isn't promised, it's mechanical:
 
-- **Python**: `.python-version` says `3.13`. `uv` downloads that version if it
+- **Python**: `.python-version` says `3.14`. `uv` downloads that version if it
   doesn't have it.
 - **Dependencies**: `uv.lock` pins the exact version of each package, with
   hashes. `uv sync --locked` fails if the lock doesn't match `pyproject.toml`,

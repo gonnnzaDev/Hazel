@@ -6,11 +6,10 @@
 # solo el resultado. Así la imagen final no lleva el compilador, ni uv, ni el
 # código fuente que ya no hace falta.
 #
-# Multi-arquitectura: la imagen base está fijada por digest, así que el mismo
-# `docker buildx build` produce la imagen correcta para linux/amd64 (Intel/AMD),
-# linux/arm64 (Apple Silicon, Android 64-bit) y arm/v7 (Android 32-bit) sin
-# cambiar una línea. El digest es el del índice multi-arquitectura, no el de una
-# plataforma: por eso compila para todas.
+# Multi-arquitectura: fijar por digest el índice multi-arquitectura cuando se
+# congele la release 3.14, así el mismo `docker buildx build` produce la imagen
+# correcta para linux/amd64 (Intel/AMD), linux/arm64 (Apple Silicon,
+# Android 64-bit) y arm/v7 (Android 32-bit) sin cambiar una línea.
 #
 # Para construir para varias arquitecturas a la vez hace falta buildx:
 #     docker buildx build --platform linux/amd64,linux/arm64 -t gonnnzadev/recop .
@@ -18,7 +17,7 @@
 # ─────────────────────────────────────────────────────────────────────────────
 # Etapa 1: builder
 # ─────────────────────────────────────────────────────────────────────────────
-FROM python:3.13-slim-bookworm@sha256:a1165e272e578941b84abc79e4ab38a0305cd12803a5c4247979ac7655f4d641 AS builder
+FROM python:3.14-slim-bookworm AS builder
 
 ENV \
     UV_COMPILE_BYTECODE=1 \
@@ -54,7 +53,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 # ─────────────────────────────────────────────────────────────────────────────
 # Etapa 2: runtime
 # ─────────────────────────────────────────────────────────────────────────────
-FROM python:3.13-slim-bookworm@sha256:a1165e272e578941b84abc79e4ab38a0305cd12803a5c4247979ac7655f4d641 AS runtime
+FROM python:3.14-slim-bookworm AS runtime
 
 # tini como PID 1: sin él, SIGTERM no llega a Uvicorn y el contenedor tarda
 # 10 segundos en morir en cada `docker compose restart`. Con tini, el proceso

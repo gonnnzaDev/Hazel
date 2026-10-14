@@ -24,7 +24,7 @@ Recop is a Discord-like chat, but **with no one in the middle**. No company, no 
 
 ## What you need
 
-- Docker, or Python 3.13+, PostgreSQL and Kafka if you prefer a manual install
+- Docker, or Python 3.14+, PostgreSQL and Kafka if you prefer a manual install
 - Git
 - Your friends must be able to reach your computer (the port you choose has to be accessible)
 
