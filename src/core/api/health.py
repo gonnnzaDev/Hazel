@@ -1,5 +1,3 @@
-"""Node health and diagnostics."""
-
 from __future__ import annotations
 
 from datetime import UTC, datetime
@@ -9,12 +7,11 @@ from sqlalchemy import text
 
 from core.api.deps import SessionDep, SettingsDep
 
-router = APIRouter(prefix="/health", tags=["salud"])
+router = APIRouter(prefix="/health", tags=["health"])
 
 
-@router.get("", summary="Estado del proceso")
+@router.get("", summary="Process status")
 async def health(settings: SettingsDep) -> dict[str, object]:
-    """Liveness; touches no dependencies."""
     return {
         "status": "ok",
         "service": "recop-node",
@@ -24,9 +21,8 @@ async def health(settings: SettingsDep) -> dict[str, object]:
     }
 
 
-@router.get("/ready", summary="Listo para recibir tráfico")
+@router.get("/ready", summary="Ready to receive traffic")
 async def readiness(response: Response, session: SessionDep) -> dict[str, object]:
-    """Readiness with all dependency checks; 503 when unservable."""
     checks: dict[str, object] = {}
     ready = True
 
@@ -37,7 +33,6 @@ async def readiness(response: Response, session: SessionDep) -> dict[str, object
         checks["database"] = f"error: {type(exc).__name__}"
         ready = False
 
-    # Kafka not wired yet; reported explicitly instead of omitted.
     checks["kafka"] = "not_wired"
 
     if not ready:

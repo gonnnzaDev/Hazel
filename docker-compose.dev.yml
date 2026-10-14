@@ -1,12 +1,12 @@
-# Recop — dependencias para desarrollo.
+# Recop — dev dependencies.
 #
-# Solo PostgreSQL y Kafka. La API corre en tu máquina con `make api`, para que
-# puedas editar código y recargar sin reconstruir la imagen.
+# Only PostgreSQL and Kafka. The API runs on your machine with `make api`, so you
+# can edit code and reload without rebuilding the image.
 #
 #     docker compose -f docker-compose.dev.yml up -d
 #     make api
 #
-# Para levantar todo containerizado, usá el `docker-compose.yml` principal.
+# To start everything containerized, use the main `docker-compose.yml`.
 
 services:
   postgres:

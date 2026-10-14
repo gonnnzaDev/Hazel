@@ -1,8 +1,3 @@
-"""Stdlib-only local address resolution (0.0.0.0 is not connectable).
-
-Returns all candidates instead of guessing one; single-IP guesses break on multi-NIC/VPN hosts.
-"""
-
 from __future__ import annotations
 
 import socket
@@ -15,19 +10,15 @@ AddressFamily = Literal["ipv4", "ipv6"]
 
 
 class LocalAddress(BaseModel):
-    """Address the node may be reachable at."""
 
     host: str
     family: AddressFamily
     private: bool
-    """Private LAN address; public ones are usually behind NAT."""
 
     loopback: bool = False
-    """Loopback; local testing only."""
 
 
 def _describe(raw: str) -> LocalAddress | None:
-    """Classify an address; None when unusable."""
     try:
         parsed = ip_address(raw)
     except ValueError:
@@ -44,7 +35,6 @@ def _describe(raw: str) -> LocalAddress | None:
 
 
 def _hostname_addresses() -> list[str]:
-    """Addresses the OS maps to this hostname."""
     try:
         hostname = socket.gethostname()
     except OSError:
@@ -56,10 +46,8 @@ def _hostname_addresses() -> list[str]:
     try:
         infos = socket.getaddrinfo(hostname, None, proto=socket.IPPROTO_TCP)
     except (socket.gaierror, OSError):
-        # Unresolvable hostname falls through to the fallback below.
         return []
 
-    # Host is element 0 in both IPv4 and IPv6 sockaddrs.
     hosts: list[str] = []
     for info in infos:
         sockaddr = info[4]
@@ -70,7 +58,6 @@ def _hostname_addresses() -> list[str]:
 
 
 def local_addresses(*, include_loopback: bool = False) -> list[LocalAddress]:
-    """Reachable addresses, sorted; stdlib-only with outbound-interface fallback."""
     candidates = [raw for raw in _hostname_addresses() if raw]
 
     if not candidates:
@@ -92,12 +79,10 @@ def local_addresses(*, include_loopback: bool = False) -> list[LocalAddress]:
 
 
 def _fallback_addresses() -> list[str]:
-    """Outbound-interface IP via a no-traffic UDP connect."""
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     try:
         sock.settimeout(0.2)
-        # No traffic sent; connect only selects the route.
-        sock.connect(("192.0.2.1", 9))  # TEST-NET-1, reserved and unroutable
+        sock.connect(("192.0.2.1", 9))
         return [sock.getsockname()[0]]
     except OSError:
         return []
@@ -106,7 +91,6 @@ def _fallback_addresses() -> list[str]:
 
 
 def _sort_key(address: LocalAddress) -> tuple[int, int, int]:
-    """Private IPv4 > private IPv6 > public > loopback; stable by IP value."""
     if address.loopback:
         priority = 3
     elif address.private:

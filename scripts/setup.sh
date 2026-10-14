@@ -1,20 +1,20 @@
 #!/usr/bin/env bash
 # ─────────────────────────────────────────────────────────────────────────────
-# Recop — instalación
+# Recop — installation
 #
 #     ./scripts/setup.sh
 #
-# Funciona en Linux, macOS y Android (Termux). Para Windows, setup.ps1.
+# Works on Linux, macOS, and Android (Termux). For Windows, use setup.ps1.
 #
-# Qué hace, en orden:
-#   1. Detecta la plataforma y chequea que falte lo mínimo
-#   2. Instala uv si no está (uv trae su propio Python, así que no hace falta
-#      tener Python instalado)
-#   3. Instala las dependencias exactas que define uv.lock
-#   4. Crea el .env con un secreto generado
-#   5. Levanta PostgreSQL y Kafka con Docker, si hay Docker
+# What it does, in order:
+#   1. Detects the platform and checks the bare minimum
+#   2. Installs uv if missing (uv brings its own Python, so you don't need
+#      Python installed)
+#   3. Installs the exact dependencies pinned in uv.lock
+#   4. Creates the .env with a generated secret
+#   5. Starts PostgreSQL and Kafka with Docker, if Docker is available
 #
-# Es idempotente: correrlo dos veces no rompe nada.
+# It is idempotent: running it twice breaks nothing.
 # ─────────────────────────────────────────────────────────────────────────────
 
 set -euo pipefail
@@ -23,7 +23,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$PROJECT_DIR"
 
-# ─── Presentación ─────────────────────────────────────────────────────────────
+# ─── Presentation ─────────────────────────────────────────────────────────────
 
 if [ -t 1 ] && [ -z "${NO_COLOR:-}" ]; then
     BOLD=$'\033[1m'; DIM=$'\033[2m'; RED=$'\033[31m'; GREEN=$'\033[32m'
@@ -38,14 +38,14 @@ ok()    { printf '    %s✓%s %s\n' "$GREEN" "$RESET" "$*"; }
 warn()  { printf '    %s!%s %s\n' "$YELLOW" "$RESET" "$*" >&2; }
 die()   { printf '\n%serror:%s %s\n' "$RED" "$RESET" "$*" >&2; exit 1; }
 
-# ─── 1. Plataforma ────────────────────────────────────────────────────────────
+# ─── 1. Platform ────────────────────────────────────────────────────────────
 
-step "Detectando la plataforma"
+step "Detecting the platform"
 
 UNAME_S="$(uname -s)"
 UNAME_M="$(uname -m)"
 
-# Termux define $PREFIX; además el kernel se identifica como Android.
+# Termux defines $PREFIX; also the kernel identifies itself as Android.
 IS_TERMUX=0
 if [ -n "${TERMUX_VERSION:-}" ] || [ -n "${PREFIX:-}" ] || [ "$(uname -o 2>/dev/null || true)" = "Android" ]; then
     IS_TERMUX=1
@@ -55,7 +55,7 @@ case "$UNAME_S" in
     Linux)   PLATFORM="linux" ;;
     Darwin)  PLATFORM="macos" ;;
     MINGW*|MSYS*|CYGWIN*) PLATFORM="windows" ;;
-    *)       PLATFORM="desconocida ($UNAME_S)" ;;
+    *)       PLATFORM="unknown ($UNAME_S)" ;;
 esac
 
 ok "$PLATFORM / $UNAME_M"
@@ -63,11 +63,11 @@ if [ "$IS_TERMUX" -eq 1 ]; then
     ok "Android (Termux)"
 fi
 
-# ─── 2. Prerrequisitos ────────────────────────────────────────────────────────
+# ─── 2. Prerequisites ────────────────────────────────────────────────────────
 
-step "Chequeando lo mínimo"
+step "Checking the bare minimum"
 
-command -v git >/dev/null 2>&1 || die "necesitás git. Instalalo y volvé a correr este script."
+command -v git >/dev/null 2>&1 || die "you need git. Install it and run this script again."
 
 if command -v curl >/dev/null 2>&1; then
     DOWNLOADER="curl"
@@ -75,14 +75,14 @@ elif command -v wget >/dev/null 2>&1; then
     DOWNLOADER="wget"
 else
     DOWNLOADER=""
-    warn "no encontré curl ni wget. Voy a necesitar uno de los dos."
+    warn "found neither curl nor wget. I will need one of the two."
 fi
-info "git ✓  ${DOWNLOADER:-sin downloader}"
+info "git ✓  ${DOWNLOADER:-no downloader}"
 
 # ─── 3. uv ────────────────────────────────────────────────────────────────────
 
 install_uv() {
-    info "instalando uv..."
+    info "installing uv..."
 
     if [ -n "$DOWNLOADER" ]; then
         if [ "$DOWNLOADER" = "curl" ]; then
@@ -94,7 +94,7 @@ install_uv() {
         python3 -m pip install --user uv >/dev/null 2>&1 || return 1
     fi
 
-    # uv se instala en ~/.local/bin, que puede no estar en el PATH todavía.
+    # uv installs into ~/.local/bin, which may not be on PATH yet.
     case ":$PATH:" in
         *":$HOME/.local/bin:"*) ;;
         *) export PATH="$HOME/.local/bin:$PATH" ;;
@@ -102,58 +102,58 @@ install_uv() {
     command -v uv >/dev/null 2>&1
 }
 
-step "Instalando uv (el gestor de dependencias)"
+step "Installing uv (the dependency manager)"
 if command -v uv >/dev/null 2>&1; then
     ok "uv $(uv --version 2>/dev/null | awk '{print $2}')"
 else
-    install_uv || die "no pude instalar uv. Instalalo a mano: https://docs.astral.sh/uv/getting-started/installation/"
+    install_uv || die "could not install uv. Install it manually: https://docs.astral.sh/uv/getting-started/installation/"
     ok "uv $(uv --version 2>/dev/null | awk '{print $2}')"
 fi
 
-info "uv trae su propio Python, así que no hace falta que tengas Python instalado."
+info "uv brings its own Python, so you don't need Python installed."
 
-# ─── 4. Dependencias ──────────────────────────────────────────────────────────
+# ─── 4. Dependencies ──────────────────────────────────────────────────────────
 
-step "Instalando las dependencias"
+step "Installing dependencies"
 
-# uv sync usa uv.lock: es una lista exacta de versiones. Todos los que corran
-# este script instalan lo mismo, sin importar cuándo lo corren.
+# uv sync uses uv.lock: an exact list of versions. Everyone running
+# this script installs the same thing, no matter when they run it.
 if uv sync --locked --no-dev 2>&1 | sed 's/^/    /'; then
-    ok "dependencias instaladas (exactas, desde uv.lock)"
+    ok "dependencies installed (exact, from uv.lock)"
 else
-    die "falló la instalación de dependencias. Revisá el error de arriba."
+    die "dependency installation failed. Check the error above."
 fi
 
 if uv sync --locked 2>&1 | sed 's/^/    /'; then
-    ok "herramientas de desarrollo instaladas"
+    ok "dev tools installed"
 fi
 
-# ─── 5. Configuración ─────────────────────────────────────────────────────────
+# ─── 5. Configuration ─────────────────────────────────────────────────────────
 
-step "Preparando la configuración"
+step "Preparing configuration"
 
 if [ -f .env ]; then
-    ok ".env ya existe, no lo toco"
+    ok ".env already exists, leaving it alone"
 else
-    # El compose falla a propósito si RECOP_SECRET_KEY no está. Generamos una de
-    # verdad para que el primer arranque funcione sin pasos extra.
+    # Compose fails on purpose when RECOP_SECRET_KEY is missing. We generate a
+    # real one so the first start works with no extra steps.
     SECRET="$(python3 -c 'import secrets; print(secrets.token_urlsafe(32))' 2>/dev/null || python -c 'import secrets; print(secrets.token_urlsafe(32))' 2>/dev/null || head -c 32 /dev/urandom | base64)"
 
     if command -v uv >/dev/null 2>&1; then
         SECRET="$(uv run python -c 'import secrets; print(secrets.token_urlsafe(32))' 2>/dev/null || echo "$SECRET")"
     fi
 
-    # Defaults espejo de src/core/config.py: lo único que debe ser único por
-    # instalación es el secreto.
+    # Defaults mirroring src/core/config.py: the only thing that must be unique
+    # per install is the secret.
     cat > .env <<EOF
-# Recop — configuración local (generada por setup.sh; NUNCA commitear).
-# Entorno: local | test | prod
+# Recop — local configuration (generated by setup.sh; NEVER commit).
+# Environment: local | test | prod
 RECOP_ENV=local
 RECOP_DEBUG=true
-# Secreto para firmar sesiones/tokens.
+# Secret for signing sessions/tokens.
 RECOP_SECRET_KEY=$SECRET
 
-# Solo para docker compose: el nodo en container no las usa, solo el compose.
+# Only for docker compose: the containerized node does not use them, only compose does.
 RECOP_PUBLISH_HOST=0.0.0.0
 RECOP_PUBLISH_PORT=7272
 
@@ -186,30 +186,30 @@ RECOP_MAX_MESSAGE_BYTES=4000
 EOF
 
     chmod 600 .env
-    ok ".env creado con un secreto generado"
+    ok ".env created with a generated secret"
 fi
 
 # ─── 6. Docker ────────────────────────────────────────────────────────────────
 
-step "Buscando Docker"
+step "Looking for Docker"
 
 HAVE_DOCKER=0
 if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
     HAVE_DOCKER=1
     ok "docker $(docker version --format '{{.Server.Version}}' 2>/dev/null || echo '?')"
 elif command -v docker >/dev/null 2>&1; then
-    warn "docker está instalado pero el daemon no responde."
-    warn "Si es Linux: agregate al grupo docker -> sudo usermod -aG docker \$USER"
+    warn "docker is installed but the daemon is not responding."
+    warn "On Linux: add yourself to the docker group -> sudo usermod -aG docker \$USER"
 elif [ "$IS_TERMUX" -eq 1 ]; then
-    warn "Docker en Android requiere Termux con el paquete docker y permisos extra."
+    warn "Docker on Android requires Termux with the docker package and extra permissions."
 else
-    warn "no encontré Docker."
+    warn "no Docker found."
 fi
 
 if [ "$HAVE_DOCKER" -eq 1 ]; then
-    step "Levantando PostgreSQL y Kafka"
+    step "Starting PostgreSQL and Kafka"
     if docker compose -f docker-compose.dev.yml up -d 2>&1 | sed 's/^/    /'; then
-        info "esperando a que PostgreSQL responda..."
+        info "waiting for PostgreSQL to respond..."
         for _ in $(seq 1 30); do
             if docker compose -f docker-compose.dev.yml exec -T postgres \
                 pg_isready -U "${POSTGRES_USER:-recop}" >/dev/null 2>&1; then
@@ -217,16 +217,16 @@ if [ "$HAVE_DOCKER" -eq 1 ]; then
             fi
             sleep 1
         done
-        ok "PostgreSQL y Kafka levantados"
+        ok "PostgreSQL and Kafka are up"
     else
-        warn "no pude levantar los servicios. Los dejo para que los mires vos."
+        warn "could not start the services. Leaving them for you to look at."
     fi
 
-    step "Aplicando migraciones"
+    step "Applying migrations"
     if uv run alembic upgrade head 2>&1 | sed 's/^/    /'; then
-        ok "base de datos lista"
+        ok "database ready"
     else
-        warn "fallaron las migraciones. Corré 'make migrate' cuando la base esté arriba."
+        warn "migrations failed. Run 'make migrate' once the database is up."
     fi
 fi
 
@@ -237,26 +237,26 @@ PORT="${PORT:-7272}"
 
 cat <<EOF
 
-${GREEN}${BOLD}Listo.${RESET}
+${GREEN}${BOLD}Done.${RESET}
 
-  ${BOLD}Arrancar el nodo${RESET}
+  ${BOLD}Start the node${RESET}
     uv run python -m core
 
-  Y después, en otra terminal:
+  Then, in another terminal:
 
-    ${DIM}curl localhost:${PORT}/docs${RESET}        la API documentada
-    ${DIM}curl localhost:${PORT}/api/v1/node${RESET}   la dirección para compartir
+    ${DIM}curl localhost:${PORT}/docs${RESET}        the documented API
+    ${DIM}curl localhost:${PORT}/api/v1/node${RESET}   the address to share
 
-  ${BOLD}Sin Docker${RESET}: apuntá RECOP_DATABASE_URL y RECOP_KAFKA_BOOTSTRAP_SERVERS
-  en el .env a unas bases de datos que ya tengas, y corré las migraciones.
+  ${BOLD}Without Docker${RESET}: point RECOP_DATABASE_URL and RECOP_KAFKA_BOOTSTRAP_SERVERS
+  in the .env to databases you already have, and run the migrations.
 
-  ${BOLD}Los cuatro estados de un servidor${RESET}
-    Apagado o caído  → puerto cerrado, datos intactos
-    Encendido        → puerto abierto, datos intactos
-    Eliminado        → puerto cerrado, datos borrados
+  ${BOLD}The four states of a server${RESET}
+    Off or down  → port closed, data intact
+    On           → port open, data intact
+    Deleted      → port closed, data deleted
 
-  ${BOLD}Ayuda${RESET}
-    ./scripts/recop.sh help      lista los comandos
-    make help                     lo mismo, si tenés make
+  ${BOLD}Help${RESET}
+    ./scripts/recop.sh help      list the commands
+    make help                    same thing, if you have make
 
 EOF

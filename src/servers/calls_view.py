@@ -1,8 +1,3 @@
-"""Call endpoints: signaling WebSocket plus room listing.
-
-Token travels in the query string (WebSocket clients cannot set headers).
-"""
-
 from __future__ import annotations
 
 import uuid
@@ -39,7 +34,6 @@ router = APIRouter()
 
 @dataclass(slots=True)
 class CallIdentity:
-    """Call participant identity, verified against the DB."""
 
     member_id: str
     nickname: str
@@ -47,16 +41,15 @@ class CallIdentity:
 
 
 async def resolve_identity(server_id: str, channel_id: str, token: str) -> CallIdentity:
-    """Verify token, server, membership, and channel — in that order."""
     if not token:
-        raise AuthenticationError("Falta el token.", code="missing_token")
+        raise AuthenticationError("Missing token.", code="missing_token")
 
     try:
         sid = uuid.UUID(server_id)
         cid = uuid.UUID(channel_id)
     except (ValueError, AttributeError):
         raise NotFoundError(
-            "El servidor o el canal no existe.",
+            "Server or channel does not exist.",
             code="call_target_not_found",
         ) from None
 
@@ -66,7 +59,7 @@ async def resolve_identity(server_id: str, channel_id: str, token: str) -> CallI
 
         if member.server_id != server.id:
             raise PermissionDeniedError(
-                "Tu token es de otro servidor.",
+                "Your token belongs to another server.",
                 code="wrong_server",
             )
 
@@ -78,7 +71,7 @@ async def resolve_identity(server_id: str, channel_id: str, token: str) -> CallI
 
         if channel is None:
             raise NotFoundError(
-                "El canal no existe en este servidor.",
+                "Channel does not exist on this server.",
                 code="channel_not_found",
                 extra={"channel_id": str(cid)},
             )
@@ -91,7 +84,6 @@ async def resolve_identity(server_id: str, channel_id: str, token: str) -> CallI
 
 
 async def _handle_message(channel_id: str, peer: Peer, raw: str) -> None:
-    """Route one raw client message: relay SDP/ICE, apply state updates, drop the rest."""
     message = parse_signal(raw)
     if message is None:
         return
@@ -110,7 +102,6 @@ async def _handle_message(channel_id: str, peer: Peer, raw: str) -> None:
             {
                 "type": kind,
                 "from": peer.member_id,
-                # `sdp` or `candidate`; the server never inspects the payload.
                 "payload": message.get("sdp") if kind != "ice" else message.get("candidate"),
             },
         )
@@ -134,7 +125,6 @@ async def _handle_message(channel_id: str, peer: Peer, raw: str) -> None:
 
 
 def _as_bool(value: object, *, default: bool) -> bool:
-    """Coerce client input to bool, keeping the current value otherwise."""
     return value if isinstance(value, bool) else default
 
 
@@ -145,14 +135,12 @@ async def call_signaling(
     channel_id: str,
     settings: SettingsDep,
 ) -> None:
-    """One call socket: accept, verify, join, relay until disconnect; `finally` always leaves."""
     await websocket.accept()
 
     token = (websocket.query_params.get("token") or "").strip()
     try:
         identity = await resolve_identity(server_id, channel_id, token)
     except Exception as exc:
-        # Pre-handshake errors use close codes (no JSON channel yet); 1008 = policy violation.
         await websocket.close(code=1008, reason=_close_reason(exc))
         return
 
@@ -165,7 +153,6 @@ async def call_signaling(
 
     existing = await call_manager.join(channel_id, peer)
 
-    # Present the room and ICE servers so the newcomer can offer.
     await websocket.send_json(
         {
             "type": "welcome",
@@ -195,14 +182,12 @@ async def call_signaling(
 
 
 def _close_reason(exc: Exception) -> str:
-    """Human-readable close reason, truncated to the protocol limit."""
     code = getattr(exc, "code", None)
     reason = code if isinstance(code, str) else "unauthorized"
     return reason[:120]
 
 
 class CallParticipant(BaseModel):
-    """A call participant as seen by the room."""
 
     member_id: str
     nickname: str
@@ -212,7 +197,6 @@ class CallParticipant(BaseModel):
 
 
 class CallParticipantsResponse(BaseModel):
-    """Current call presence and capacity."""
 
     channel_id: str
     participants: list[CallParticipant] = Field(default_factory=list)
@@ -223,18 +207,17 @@ class CallParticipantsResponse(BaseModel):
 @router.get(
     "/{server_id}/channels/{channel_id}/call/participants",
     response_model=CallParticipantsResponse,
-    summary="Quién está en la llamada",
+    summary="Who is on the call",
 )
 async def call_participants(
-    server_id: Annotated[RecordId, Path(description="Identificador del servidor")],
-    channel_id: Annotated[str, Path(description="Identificador del canal")],
+    server_id: Annotated[RecordId, Path(description="Server identifier")],
+    channel_id: Annotated[str, Path(description="Channel identifier")],
     member: CurrentMember,
     settings: SettingsDep,
 ) -> CallParticipantsResponse:
-    """Peers in a channel's call (in-memory); the token must belong to this server."""
     if member.server_id != server_id:
         raise PermissionDeniedError(
-            "Tu token es de otro servidor.",
+            "Your token belongs to another server.",
             code="wrong_server",
         )
 

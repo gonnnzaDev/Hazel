@@ -1,5 +1,3 @@
-"""DB infrastructure: engine, session, declarative base."""
-
 from core.db.base import Base
 from core.db.session import get_engine, get_session_maker, session_scope
 

@@ -1,5 +1,3 @@
-"""Node endpoints."""
-
 from __future__ import annotations
 
 from fastapi import APIRouter
@@ -10,13 +8,11 @@ from node.schemas import NodeAddress, NodeInfo
 router = APIRouter()
 
 
-@router.get("", response_model=NodeInfo, summary="Ficha del nodo")
+@router.get("", response_model=NodeInfo, summary="Node card")
 async def node_info() -> NodeInfo:
-    """Describe this process and its listening port."""
     return NodeInfo.model_validate(service.node_info())
 
 
-@router.get("/address", response_model=NodeAddress, summary="Dirección para compartir")
+@router.get("/address", response_model=NodeAddress, summary="Shareable address")
 async def node_address() -> NodeAddress:
-    """Reachable node address; resolves wildcard bind to usable interfaces."""
     return NodeAddress.model_validate(service.node_address())
