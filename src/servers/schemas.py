@@ -1,8 +1,3 @@
-"""Server API input/output contracts.
-
-Schemas are the public API: changing one is an API change.
-"""
-
 from __future__ import annotations
 
 from datetime import datetime
@@ -17,7 +12,6 @@ from servers.states import ServerStatus
 
 ServerName = Annotated[str, Field(min_length=2, max_length=64)]
 ServerSlug = Annotated[str, Field(min_length=2, max_length=64)]
-"""Free-text server identifier; the service normalizes it (e.g. "Mi Casa" -> "mi-casa")."""
 OwnerNickname = Annotated[str, Field(min_length=nick.MIN_LENGTH, max_length=nick.MAX_LENGTH)]
 
 
@@ -30,10 +24,9 @@ class ChannelBase(BaseModel):
     @field_validator("name")
     @classmethod
     def _valid_name(cls, value: str) -> str:
-        """Channel names render in the UI: no blank names."""
         normalized = value.strip()
         if not normalized:
-            raise ValueError("el nombre del canal no puede estar vacío")
+            raise ValueError("channel name cannot be empty")
         return normalized
 
 
@@ -44,7 +37,7 @@ class ChannelCreate(ChannelBase):
     @classmethod
     def validar_kind(cls, value):
         if value not in ["text", "voice"]:
-            raise ValueError(f"'{value}' no es un kind válido. Use 'text' o 'voice'.")
+            raise ValueError(f"'{value}' is not a valid kind. Use 'text' or 'voice'.")
         return value
 
 
@@ -64,7 +57,6 @@ class ServerBase(BaseModel):
 
 
 class ServerCreate(ServerBase):
-    """Server creation payload; `owner_nickname` is the local in-server identity, not an account."""
 
     owner_nickname: OwnerNickname
     max_members: Annotated[int, Field(default=50, ge=1, le=10_000)]
@@ -77,7 +69,6 @@ class ServerCreate(ServerBase):
 
 
 class ServerUpdate(BaseModel):
-    """Partial update to an existing server."""
 
     name: ServerName | None = None
     description: Annotated[str | None, Field(default=None, max_length=1000)]
@@ -85,7 +76,6 @@ class ServerUpdate(BaseModel):
 
 
 class ServerRead(ServerBase):
-    """Public server representation (no owner internals)."""
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -99,12 +89,10 @@ class ServerRead(ServerBase):
 
     @property
     def is_accepting_connections(self) -> bool:
-        """Whether the server accepts traffic right now."""
         return self.status.accepts_traffic
 
 
 class ServerAddress(BaseModel):
-    """Join address for a server; servers share the node port, the slug routes."""
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -117,13 +105,11 @@ class ServerAddress(BaseModel):
 
     @property
     def share_hint(self) -> str | None:
-        """Shareable address, or None when the node has no resolvable IP."""
         recommended = self.node.recommended
         return f"{recommended}:{self.node.port}" if recommended else None
 
 
 class ServerListResponse(BaseModel):
-    """Paginated server listing."""
 
     items: list[ServerRead]
     total: int
@@ -132,7 +118,6 @@ class ServerListResponse(BaseModel):
 
 
 class MessageCreate(BaseModel):
-    """Payload for creating a text message."""
 
     content: Annotated[str, Field(min_length=1, max_length=2000)]
 
@@ -140,7 +125,6 @@ class MessageCreate(BaseModel):
 
 
 class MessageRead(BaseModel):
-    """A text message shown to the client."""
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -151,7 +135,6 @@ class MessageRead(BaseModel):
 
 
 class MessageListResponse(BaseModel):
-    """Paginated message listing."""
 
     items: list[MessageRead]
     total: int

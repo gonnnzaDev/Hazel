@@ -1,5 +1,3 @@
-"""Member and token persistence; policy decisions live in `identity.service`."""
-
 from __future__ import annotations
 
 import hashlib
@@ -18,18 +16,16 @@ from servers.model import Server
 
 
 def hash_token(raw: str) -> str:
-    """Hex SHA-256; slow hashes add nothing for 256-bit random tokens."""
     return hashlib.sha256(raw.encode()).hexdigest()
 
 
 async def get_member(session: AsyncSession, server_id: RecordId, member_id: RecordId) -> Member:
-    """Load a member by id, scoped to the server."""
     stmt = select(Member).where(Member.id == member_id, Member.server_id == server_id)
     member = (await session.execute(stmt)).scalar_one_or_none()
 
     if member is None:
         raise NotFoundError(
-            "Ese miembro no existe en este servidor.",
+            "That member does not exist on this server.",
             code="member_not_found",
             extra={"member_id": str(member_id)},
         )
@@ -39,14 +35,13 @@ async def get_member(session: AsyncSession, server_id: RecordId, member_id: Reco
 async def get_member_by_nickname(
     session: AsyncSession, server_id: RecordId, nickname: str
 ) -> Member:
-    """Find a member by nickname within a server."""
     canonical = nick.normalize(nickname)
     stmt = select(Member).where(Member.server_id == server_id, Member.nickname == canonical)
     member = (await session.execute(stmt)).scalar_one_or_none()
 
     if member is None:
         raise NotFoundError(
-            f"Nadie con el nickname '{canonical}' está en este servidor.",
+            f"No one with nickname '{canonical}' is on this server.",
             code="member_not_found_by_nickname",
             extra={"nickname": canonical},
         )
@@ -56,7 +51,6 @@ async def get_member_by_nickname(
 async def list_members(
     session: AsyncSession, server_id: RecordId, *, limit: int, offset: int
 ) -> tuple[list[Member], int]:
-    """Server members ordered by nickname."""
     total = await session.scalar(
         select(func.count()).select_from(Member).where(Member.server_id == server_id)
     )
@@ -72,7 +66,6 @@ async def list_members(
 
 
 async def member_count(session: AsyncSession, server_id: RecordId) -> int:
-    """Count server members."""
     return int(
         await session.scalar(
             select(func.count()).select_from(Member).where(Member.server_id == server_id)
@@ -84,14 +77,12 @@ async def member_count(session: AsyncSession, server_id: RecordId) -> int:
 async def get_member_by_nickname_optional(
     session: AsyncSession, server_id: RecordId, nickname: str
 ) -> Member | None:
-    """Like get_member_by_nickname but returns None."""
     canonical = nick.normalize(nickname)
     stmt = select(Member).where(Member.server_id == server_id, Member.nickname == canonical)
     return (await session.execute(stmt)).scalar_one_or_none()
 
 
 async def get_token_with_member(session: AsyncSession, token_hash: str) -> MemberToken | None:
-    """Token row with member preloaded, or None."""
     stmt = (
         select(MemberToken)
         .options(selectinload(MemberToken.member))
@@ -108,7 +99,6 @@ async def create_member(
     display_name: str,
     role: Role,
 ) -> Member:
-    """Insert a member row."""
     member = Member(
         id=new_id(),
         server_id=server_id,
@@ -129,7 +119,6 @@ async def issue_token(
     token_hash: str,
     expires_at: datetime | None,
 ) -> MemberToken:
-    """Insert a token row; lets IntegrityError propagate to the caller."""
     token = MemberToken(
         id=new_id(),
         member_id=member_id,
@@ -143,20 +132,17 @@ async def issue_token(
 
 
 async def delete_member(session: AsyncSession, member: Member) -> None:
-    """Delete a member row."""
     await session.delete(member)
     await session.flush()
 
 
 async def set_member_role(session: AsyncSession, member: Member, role: Role) -> Member:
-    """Persist a role change."""
     member.role = role
     await session.flush()
     return member
 
 
 async def promote_oldest_to_owner(session: AsyncSession, server_id: RecordId) -> None:
-    """Promote oldest remaining member to owner (empty server: no-op)."""
     successor = (
         await session.execute(
             select(Member)
@@ -167,21 +153,19 @@ async def promote_oldest_to_owner(session: AsyncSession, server_id: RecordId) ->
     ).scalar_one_or_none()
 
     if successor is None:
-        return  # Empty server; no successor.
+        return
 
     successor.role = Role.OWNER
     await session.flush()
 
 
 async def revoke_token(session: AsyncSession, raw_token: str) -> None:
-    """Revoke the calling token (single device logout)."""
     token_hash = hash_token(raw_token)
     await session.execute(delete(MemberToken).where(MemberToken.token_hash == token_hash))
     await session.flush()
 
 
 async def revoke_all_tokens(session: AsyncSession, member: Member) -> int:
-    """Revoke all member tokens; return count."""
     result = await session.execute(
         update(MemberToken)
         .where(MemberToken.member_id == member.id, MemberToken.revoked_at.is_(None))
@@ -194,7 +178,6 @@ async def revoke_all_tokens(session: AsyncSession, member: Member) -> int:
 
 
 async def list_my_sessions(session: AsyncSession, raw_token: str) -> list[tuple[Member, Server]]:
-    """Servers where the exact token is valid; tokens are per-server."""
     token_hash = hash_token(raw_token)
     stmt = (
         select(Member, Server)

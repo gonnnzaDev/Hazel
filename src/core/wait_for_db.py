@@ -1,8 +1,3 @@
-"""Wait for PostgreSQL before migrations/startup.
-
-In Docker both containers start together and PG needs seconds; else the entrypoint crash-loops.
-"""
-
 from __future__ import annotations
 
 import argparse
@@ -17,7 +12,6 @@ from core.db.session import dispose_engine, get_engine
 
 
 async def wait_for_db(timeout_seconds: float, interval: float = 1.0) -> bool:
-    """Poll until SELECT 1 succeeds or timeout."""
     settings = get_settings()
     engine = get_engine()
     deadline = asyncio.get_running_loop().time() + timeout_seconds
@@ -29,31 +23,29 @@ async def wait_for_db(timeout_seconds: float, interval: float = 1.0) -> bool:
             async with engine.connect() as connection:
                 await connection.execute(text("SELECT 1"))
             await dispose_engine()
-            print(f"    base de datos lista ({settings.database_url.rsplit('@', 1)[-1]})")
+            print(f"    database ready ({settings.database_url.rsplit('@', 1)[-1]})")
             return True
-        # asyncpg leaks raw OSError outside SQLAlchemy; both must be caught.
         except (SQLAlchemyError, OSError) as exc:
-            # Drop failed pool connections; else retries reuse a dead socket.
             await dispose_engine()
 
             remaining = deadline - asyncio.get_running_loop().time()
             if remaining <= 0:
                 print(
-                    f"!! la base de datos no respondió en {timeout_seconds:.0f}s "
-                    f"({attempt} intentos, último error: {type(exc).__name__})",
+                    f"!! the database did not respond within {timeout_seconds:.0f}s "
+                    f"({attempt} attempts, last error: {type(exc).__name__})",
                     file=sys.stderr,
                 )
                 return False
 
             if attempt == 1 or attempt % 5 == 0:
-                print(f"    reintentando... ({attempt}, quedan {remaining:.0f}s)")
+                print(f"    retrying... ({attempt}, {remaining:.0f}s left)")
             await asyncio.sleep(min(interval, max(remaining, 0.1)))
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(prog="core.wait_for_db")
-    parser.add_argument("--timeout", type=float, default=60.0, help="Segundos a esperar")
-    parser.add_argument("--interval", type=float, default=1.0, help="Pausa entre intentos")
+    parser.add_argument("--timeout", type=float, default=60.0, help="Seconds to wait")
+    parser.add_argument("--interval", type=float, default=1.0, help="Pause between attempts")
     args = parser.parse_args()
 
     try:

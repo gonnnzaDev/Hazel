@@ -1,5 +1,3 @@
-"""Identity endpoints: join, leave, members, and sessions."""
-
 from __future__ import annotations
 
 from typing import Annotated
@@ -26,15 +24,10 @@ from servers import repository as servers_repository
 
 router = APIRouter()
 
-ServerId = Annotated[RecordId, Path(description="Identificador del servidor")]
+ServerId = Annotated[RecordId, Path(description="Server identifier")]
 MemberNick = Annotated[str, Path(min_length=2, max_length=32, description="Nickname")]
 QueryLimit = Annotated[int, Query(ge=1, le=200)]
 QueryOffset = Annotated[int, Query(ge=0)]
-
-
-# ─── Mappers ──────────────────────────────────────────────────────────────
-#
-# Explicit mappers: joined_at maps from created_at, so from_attributes is skipped.
 
 
 def _member_read(member: Member) -> MemberRead:
@@ -53,17 +46,13 @@ def _server_summary(server: object) -> ServerSummary:
     return ServerSummary(id=str(server.id), slug=server.slug, name=server.name)  # type: ignore[attr-defined]
 
 
-# ─── Join/leave ───────────────────────────────────────────────────────────
-
-
 @router.post(
     "/servers/{server_id}/join",
     response_model=JoinResponse,
     status_code=status.HTTP_201_CREATED,
-    summary="Entrar a un servidor con un nickname",
+    summary="Join a server with a nickname",
 )
 async def join(session: SessionDep, server_id: ServerId, payload: JoinRequest) -> JoinResponse:
-    """Join the server; re-joining a taken nickname recovers access. First joiner is owner."""
     server = await servers_repository.get_server(session, server_id)
     member, token, expires_at = await service.join_server(session, server, payload)
 
@@ -78,20 +67,15 @@ async def join(session: SessionDep, server_id: ServerId, payload: JoinRequest) -
 @router.post(
     "/servers/{server_id}/leave",
     status_code=status.HTTP_204_NO_CONTENT,
-    summary="Salir del servidor",
+    summary="Leave the server",
 )
 async def leave(member: CurrentMember, session: SessionDep) -> None:
-    """Leave the server and revoke all tokens; ownership passes to oldest member left."""
     await service.revoke_all_tokens(session, member)
     await service.leave_server(session, member)
 
 
-# ─── Sessions ─────────────────────────────────────────────────────────────────
-
-
-@router.post("/auth/refresh", response_model=TokenResponse, summary="Renovar el token")
+@router.post("/auth/refresh", response_model=TokenResponse, summary="Refresh the token")
 async def refresh(raw: RawToken, session: SessionDep) -> TokenResponse:
-    """Issue a new token and revoke the current one."""
     member = await service.authenticate(session, raw)
     await service.revoke_token(session, raw)
     return await _issue_token(session, member)
@@ -100,17 +84,15 @@ async def refresh(raw: RawToken, session: SessionDep) -> TokenResponse:
 @router.post(
     "/auth/logout",
     status_code=status.HTTP_204_NO_CONTENT,
-    summary="Cerrar sesión en este dispositivo",
+    summary="Log out on this device",
 )
 async def logout(raw: RawToken, session: SessionDep) -> None:
-    """Revoke the calling token; other devices stay logged in."""
-    await service.authenticate(session, raw)  # validate before revoking
+    await service.authenticate(session, raw)
     await service.revoke_token(session, raw)
 
 
-@router.post("/auth/logout-all", summary="Cerrar sesión en todos los dispositivos")
+@router.post("/auth/logout-all", summary="Log out on all devices")
 async def logout_all(raw: RawToken, session: SessionDep) -> dict[str, object]:
-    """Revoke all tokens and issue a fresh one; returns revoked count."""
     member = await service.authenticate(session, raw)
     revoked = await service.revoke_all_tokens(session, member)
     fresh = await _issue_token(session, member)
@@ -118,7 +100,6 @@ async def logout_all(raw: RawToken, session: SessionDep) -> dict[str, object]:
 
 
 async def _issue_token(session: SessionDep, member: Member) -> TokenResponse:
-    """Issue a new token for a member."""
     raw, token_hash = service.generate_token()
     token = MemberToken(
         id=new_id(),
@@ -132,36 +113,27 @@ async def _issue_token(session: SessionDep, member: Member) -> TokenResponse:
     return TokenResponse(token=raw, expires_at=token.expires_at)
 
 
-# ─── Self ────────────────────────────────────────────────────────────────
-
-
-@router.get("/me", response_model=MeResponse, summary="Quién soy")
+@router.get("/me", response_model=MeResponse, summary="Who am I")
 async def me(member: CurrentMember, session: SessionDep) -> MeResponse:
-    """Caller identity within this token's server; tokens are per-server."""
     server = await servers_repository.get_server(session, member.server_id)
     return MeResponse(member=_member_read(member), server=_server_summary(server))
 
 
-@router.patch("/me", response_model=MemberRead, summary="Cambiar mi nombre visible")
+@router.patch("/me", response_model=MemberRead, summary="Change my display name")
 async def update_me(member: CurrentMember, session: SessionDep, payload: MeUpdate) -> MemberRead:
-    """Change caller display name; nickname is immutable."""
     member.display_name = payload.display_name
     await session.flush()
     return _member_read(member)
 
 
-# ─── Members ─────────────────────────────────────────────────────────────────
-
-
 @router.get(
     "/servers/{server_id}/members",
     response_model=MemberListResponse,
-    summary="Listar miembros",
+    summary="List members",
 )
 async def list_members(
     session: SessionDep, server_id: ServerId, limit: QueryLimit = 50, offset: QueryOffset = 0
 ) -> MemberListResponse:
-    """List server members ordered by nickname."""
     await servers_repository.get_server(session, server_id)
     members, total = await repository.list_members(session, server_id, limit=limit, offset=offset)
     return MemberListResponse(
@@ -172,10 +144,9 @@ async def list_members(
 @router.get(
     "/servers/{server_id}/members/{nickname}",
     response_model=MemberRead,
-    summary="Ver un miembro",
+    summary="Get a member",
 )
 async def get_member(session: SessionDep, server_id: ServerId, nickname: MemberNick) -> MemberRead:
-    """Get a member by nickname; nicknames are per-server."""
     await servers_repository.get_server(session, server_id)
     member = await repository.get_member_by_nickname(session, server_id, nickname)
     return _member_read(member)
@@ -184,12 +155,11 @@ async def get_member(session: SessionDep, server_id: ServerId, nickname: MemberN
 @router.delete(
     "/servers/{server_id}/members/{nickname}",
     status_code=status.HTTP_204_NO_CONTENT,
-    summary="Expulsar a un miembro",
+    summary="Kick a member",
 )
 async def kick_member(
     session: SessionDep, server_id: ServerId, nickname: MemberNick, actor: CurrentMember
 ) -> None:
-    """Kick a member; requires admin and strictly higher role."""
     target = await repository.get_member_by_nickname(session, server_id, nickname)
     await service.kick_member(session, actor, target)
 
@@ -197,28 +167,26 @@ async def kick_member(
 @router.put(
     "/servers/{server_id}/members/{nickname}/role",
     response_model=MemberRead,
-    summary="Cambiar el rol de un miembro",
+    summary="Change a member's role",
 )
 async def set_member_role(
     session: SessionDep,
     server_id: ServerId,
     nickname: MemberNick,
     actor: CurrentMember,
-    role: Annotated[str, Query(description="member o admin")],
+    role: Annotated[str, Query(description="member or admin")],
 ) -> MemberRead:
-    """Change a member's role via ?role=member|admin; owner role is immutable."""
     new_role = _parse_role(role)
     target = await repository.get_member_by_nickname(session, server_id, nickname)
     return _member_read(await service.set_role(session, actor, target, new_role))
 
 
 def _parse_role(label: str) -> Role:
-    """Parse API role label into Role, raising a readable error."""
     try:
         return Role.from_label(label)
     except ValueError:
         raise ValidationDomainError(
-            f"Rol desconocido: '{label}'.",
+            f"Unknown role: '{label}'.",
             code="invalid_role",
             extra={"allowed": [Role.MEMBER.label, Role.ADMIN.label]},
         ) from None

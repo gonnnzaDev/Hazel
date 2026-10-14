@@ -1,11 +1,11 @@
-# Recop — stack completo.
+# Recop — full stack.
 #
-# `docker compose up` levanta todo: el nodo, PostgreSQL y Kafka.
+# `docker compose up` starts everything: the node, PostgreSQL, and Kafka.
 #
-# La idea es que cualquiera que clone esto tenga **exactamente el mismo
-# entorno**, sin instalar Python ni PostgreSQL a mano. Para desarrollar sobre
-# el código hay un compose más liviano en docker-compose.dev.yml, que solo
-# levanta las dependencias y deja la API corriendo en la máquina.
+# The idea is that anyone cloning this gets **exactly the same
+# environment**, without installing Python or PostgreSQL by hand. For developing
+# on the code there is a lighter compose in docker-compose.dev.yml, which only
+# starts the dependencies and leaves the API running on the machine.
 
 x-recop-image: &recop-image
   build:
@@ -14,11 +14,11 @@ x-recop-image: &recop-image
   image: gonnnzadev/recop:0.1.0
 
 services:
-  # ─── El nodo ───────────────────────────────────────────────────────────────
+  # ─── The node ───────────────────────────────────────────────────────────────
   #
-  # Publica en 0.0.0.0 a propósito: es lo que hace falta para que alguien en la
-  # misma red se conecte. Para probar solo desde tu máquina, `localhost:7272`
-  # alcanza.
+  # Published on 0.0.0.0 on purpose: that is what lets someone on the
+  # same network connect. For testing from your own machine only, `localhost:7272`
+  # is enough.
   api:
     <<: *recop-image
     container_name: recop-api
@@ -32,14 +32,14 @@ services:
       - "${RECOP_PUBLISH_HOST:-0.0.0.0}:${RECOP_PUBLISH_PORT:-7272}:7272"
     environment:
       RECOP_ENV: prod
-      RECOP_SECRET_KEY: ${RECOP_SECRET_KEY:?definí RECOP_SECRET_KEY en tu .env}
+      RECOP_SECRET_KEY: ${RECOP_SECRET_KEY:?set RECOP_SECRET_KEY in your .env}
       RECOP_HOST: 0.0.0.0
       RECOP_PORT: 7272
       RECOP_DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-recop}:${POSTGRES_PASSWORD:-recop}@postgres:5432/${POSTGRES_DB:-recop}
       RECOP_KAFKA_BOOTSTRAP_SERVERS: kafka:19092
       RECOP_AUTO_MIGRATE: "true"
-    # Sin healthcheck propio: el HEALTHCHECK del Dockerfile ya lo define, y
-    # docker compose reutiliza el de la imagen.
+    # No healthcheck of its own: the Dockerfile HEALTHCHECK already defines one, and
+    # docker compose reuses the image's.
 
   # ─── PostgreSQL ────────────────────────────────────────────────────────────
   postgres:
@@ -51,8 +51,8 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-recop}
       POSTGRES_DB: ${POSTGRES_DB:-recop}
     ports:
-      # Publicado solo para poder entrar con psql. En una máquina compartida,
-      # cambialo a "127.0.0.1:${POSTGRES_PORT:-5432}:5432".
+      # Published only so you can get in with psql. On a shared machine,
+      # change it to "127.0.0.1:${POSTGRES_PORT:-5432}:5432".
       - "${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
@@ -64,12 +64,12 @@ services:
 
   # ─── Kafka ─────────────────────────────────────────────────────────────────
   #
-  # Imagen oficial de Apache (no la de Bitnami: las versiones viejas de Bitnami
-  # ya no se pueden descargar). Modo KRaft, sin ZooKeeper.
+  # Official Apache image (not Bitnami's: old Bitnami versions can
+  # no longer be downloaded). KRaft mode, no ZooKeeper.
   #
-  # Dos listeners: `PLAINTEXT_HOST` para entrar desde la máquina, `PLAINTEXT`
-  # para entrar desde la red de Docker. Por eso el nodo usa `kafka:19092` y no
-  # `localhost:9092`.
+  # Two listeners: `PLAINTEXT_HOST` to get in from the machine, `PLAINTEXT`
+  # to get in from the Docker network. That is why the node uses `kafka:19092`
+  # and not `localhost:9092`.
   kafka:
     image: apache/kafka:3.9.1@sha256:4ceccc577f03f51f6af8dbfda55194d0d892f4fa7913ffbded567ce3895622ed
     container_name: recop-kafka
