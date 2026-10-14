@@ -20,7 +20,7 @@ def run_node(*, host: str, port: int) -> None:
     app = create_node_app(settings)
     app.state.supervisor = supervisor
 
-    logger.info("Recop node listening on %s:%s", host, port)
+    logger.info("Hazel node listening on %s:%s", host, port)
     uvicorn.run(app, host=host, port=port, log_level="info")
 
 
@@ -35,7 +35,7 @@ def run_group(*, server_id: str, host: str, port: int) -> None:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="recop", description="Self-hosted Recop chat")
+    parser = argparse.ArgumentParser(prog="hazel", description="Self-hosted Hazel chat")
     sub = parser.add_subparsers(dest="role")
 
     node = sub.add_parser("node", help="Node process: the owner's dashboard")

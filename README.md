@@ -1,4 +1,4 @@
-<h1 align="center">Recop</h1>
+<h1 align="center">Hazel</h1>
 
 <p align="center">
   <b>Your chat. Your machine. Your port.</b><br>
@@ -9,7 +9,7 @@
 
 ## What it is
 
-Recop is a Discord-like chat, but **with no one in the middle**. No company, no third-party servers: you turn the server on yourself.
+Hazel is a Discord-like chat, but **with no one in the middle**. No company, no third-party servers: you turn the server on yourself.
 
 1. Turn your server on.
 2. Share your address with your friends.
@@ -35,8 +35,8 @@ Recop is a Discord-like chat, but **with no one in the middle**. No company, no 
 ### With Docker (easiest)
 
 ```bash
-git clone https://github.com/gonnnzaDev/recop
-cd recop
+git clone https://github.com/gonnnzaDev/hazel
+cd hazel
 ./scripts/setup.sh
 docker compose up
 ```
@@ -44,10 +44,10 @@ docker compose up
 ### Manual
 
 ```bash
-git clone https://github.com/gonnnzaDev/recop
-cd recop
+git clone https://github.com/gonnnzaDev/hazel
+cd hazel
 uv sync
-echo "RECOP_SECRET_KEY=$(python3 -c 'import secrets; print(secrets.token_urlsafe(32))')" > .env
+echo "HAZEL_SECRET_KEY=$(python3 -c 'import secrets; print(secrets.token_urlsafe(32))')" > .env
 docker compose up -d
 uv run alembic upgrade head
 uv run python -m core

@@ -1,8 +1,8 @@
 {
-  "name": "recop-desktop",
-  "productName": "Recop",
+  "name": "hazel-desktop",
+  "productName": "Hazel",
   "version": "0.1.0",
-  "description": "Cliente de escritorio de Recop: tu chat, tu máquina, tu puerto.",
+  "description": "Cliente de escritorio de Hazel: tu chat, tu máquina, tu puerto.",
   "main": "dist/main.js",
   "private": true,
   "license": "GPL-3.0-or-later",

@@ -2,7 +2,7 @@
 //
 // Las peticiones HTTP a los nodos y grupos salen desde acá y no desde la
 // ventana. Así el cliente no depende de cómo cada dueño configuró CORS
-// (RECOP_CORS_ORIGINS): una página cargada desde file:// tiene origen `null`,
+// (HAZEL_CORS_ORIGINS): una página cargada desde file:// tiene origen `null`,
 // y un nodo que solo acepta orígenes conocidos la rechazaría.
 
 import * as path from 'node:path';
@@ -32,7 +32,7 @@ function createWindow(): void {
     height: 780,
     minWidth: 960,
     minHeight: 580,
-    title: 'Recop',
+    title: 'Hazel',
     icon: path.join(__dirname, '..', 'assets', 'icon.png'),
     // El mismo fondo que la app, para que no haya un destello blanco al abrir.
     backgroundColor: nativeTheme.shouldUseDarkColors ? '#313338' : '#ffffff',

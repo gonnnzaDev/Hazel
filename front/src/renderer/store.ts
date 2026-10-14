@@ -1,13 +1,13 @@
 // Lo que el cliente recuerda entre aperturas: preferencias y sesiones.
 //
-// En Recop no hay cuenta global. Cada servidor al que entrás te da un token
+// En Hazel no hay cuenta global. Cada servidor al que entrás te da un token
 // propio, así que el cliente guarda una sesión por servidor (ver `Session`).
 // Es lo que se ve en la barra de la izquierda.
 
 import type { Session, Settings } from './types';
 
-const SETTINGS_KEY = 'recop.settings.v1';
-const SESSIONS_KEY = 'recop.sessions.v1';
+const SETTINGS_KEY = 'hazel.settings.v1';
+const SESSIONS_KEY = 'hazel.sessions.v1';
 
 const DEFAULT_SETTINGS: Settings = {
   nodeUrl: 'http://127.0.0.1:7272',

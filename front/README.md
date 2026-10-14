@@ -1,10 +1,10 @@
-# Recop — cliente de escritorio
+# Hazel — cliente de escritorio
 
-La app para usar Recop sin `curl`. Hecha con [Electron](https://www.electronjs.org/),
+La app para usar Hazel sin `curl`. Hecha con [Electron](https://www.electronjs.org/),
 con una interfaz que se parece a Discord: tus servidores a la izquierda, los canales
 al lado, el chat en el medio y los miembros a la derecha.
 
-<p align="center"><img src="assets/icon.png" width="96" alt="Recop" /></p>
+<p align="center"><img src="assets/icon.png" width="96" alt="Hazel" /></p>
 
 ---
 
@@ -84,7 +84,7 @@ La ventana y el proceso principal tienen configuraciones de tipos separadas: la
 ventana no puede usar nada de Node (corre aislada) y el chequeo lo hace cumplir.
 
 **Por qué las peticiones salen del proceso principal.** La ventana se carga desde
-un archivo local, y un nodo con `RECOP_CORS_ORIGINS` restringido la rechazaría.
+un archivo local, y un nodo con `HAZEL_CORS_ORIGINS` restringido la rechazaría.
 Pidiendo desde `main.ts` el cliente anda igual sin importar cómo configuró CORS
 cada dueño.
 

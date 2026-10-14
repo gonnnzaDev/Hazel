@@ -29,7 +29,7 @@ export interface ProxyResponse {
   error?: ProxyFailure;
 }
 
-export interface RecopBridge {
+export interface HazelBridge {
   request(request: ProxyRequest): Promise<ProxyResponse>;
   copy(text: string): Promise<void>;
   platform: string;

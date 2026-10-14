@@ -81,7 +81,7 @@ def problem(
     extra: dict[str, Any] | None = None,
 ) -> JSONResponse:
     payload: dict[str, Any] = {
-        "type": f"https://recop.dev/errors/{code}",
+        "type": f"https://hazel.dev/errors/{code}",
         "title": title,
         "status": status,
         "code": code,
