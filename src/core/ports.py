@@ -3,7 +3,7 @@ from __future__ import annotations
 import contextlib
 import socket
 
-from core.config import Settings
+from config.conf import Settings
 
 _PROBE_TIMEOUT = 0.2
 
