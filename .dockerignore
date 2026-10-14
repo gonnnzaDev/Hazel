@@ -24,7 +24,6 @@ dist/
 # partir de variables de entorno.
 .env
 .env.*
-!.env.example
 
 # ─── Datos locales ────────────────────────────────────────────────────────────
 postgres_data/

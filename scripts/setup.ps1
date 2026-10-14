@@ -150,10 +150,44 @@ if (Test-Path ".env") {
     [System.Security.Cryptography.RandomNumberGenerator]::Fill($bytes)
     $Secret = [Convert]::ToBase64String($bytes).TrimEnd('=').Replace('+', '-').Replace('/', '_')
 
-    $content = Get-Content ".env.example"
-    $content = $content | ForEach-Object {
-        if ($_ -match '^RECOP_SECRET_KEY=') { "RECOP_SECRET_KEY=$Secret" } else { $_ }
-    }
+    # Defaults espejo de src/core/config.py: lo único que debe ser único por
+    # instalación es el secreto.
+    $content = @(
+        "# Recop — configuración local (generada por setup.ps1; NUNCA commitear).",
+        "RECOP_ENV=local",
+        "RECOP_DEBUG=true",
+        "RECOP_SECRET_KEY=$Secret",
+        "",
+        "RECOP_PUBLISH_HOST=0.0.0.0",
+        "RECOP_PUBLISH_PORT=7272",
+        "",
+        "POSTGRES_USER=recop",
+        "POSTGRES_PASSWORD=recop",
+        "POSTGRES_DB=recop",
+        "POSTGRES_PORT=5432",
+        "",
+        "KAFKA_EXTERNAL_PORT=9092",
+        "",
+        "RECOP_AUTO_MIGRATE=true",
+        "",
+        "RECOP_HOST=0.0.0.0",
+        "RECOP_PORT=7272",
+        "RECOP_ROOT_PATH=",
+        "RECOP_CORS_ORIGINS=*",
+        "",
+        "RECOP_DATABASE_URL=postgresql+asyncpg://recop:recop@localhost:5432/recop",
+        "RECOP_DB_POOL_SIZE=10",
+        "RECOP_DB_MAX_OVERFLOW=20",
+        "RECOP_DB_ECHO=false",
+        "",
+        "RECOP_KAFKA_BOOTSTRAP_SERVERS=localhost:9092",
+        "RECOP_KAFKA_TOPIC_PREFIX=recop",
+        "RECOP_KAFKA_CLIENT_ID=",
+        "RECOP_KAFKA_MAX_POLL_RECORDS=500",
+        "",
+        "RECOP_RATE_LIMIT_MESSAGES_PER_MINUTE=20",
+        "RECOP_MAX_MESSAGE_BYTES=4000"
+    )
     # Set-Content escribe en UTF-8 sin BOM desde PowerShell 5.1 con -Encoding UTF8.
     $content | Set-Content ".env" -Encoding UTF8
 
