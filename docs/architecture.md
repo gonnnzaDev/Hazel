@@ -1,239 +1,236 @@
-# Arquitectura de Recop
+# Recop Architecture
 
-Documento de decisiones de diseño. Cada decisión está escrita con su *por qué*
-para que las conversaciones futuras tengan contexto y no se revierta todo cada
-vez que aparece una idea nueva.
+Design-decision document. Each decision is written with its *why* so future
+conversations have context and everything isn't reverted every time a new
+idea shows up.
 
-> El contrato de la API está en [`api.md`](./api.md). Este documento explica
-> **por qué**; aquel dice **qué**.
+> The API contract lives in [`api.md`](./api.md). This document explains
+> **why**; that one says **what**.
 
 ---
 
-## 1. El producto: qué es un "servidor"
+## 1. The product: what a "server" is
 
-En Recop un **servidor** no es un concepto abstracto en la nube. Es un proceso
-que corre en la PC de una persona y escucha en un puerto de esa máquina.
+In Recop a **server** is not an abstract concept in the cloud. It is a process
+running on someone's PC and listening on a port of that machine.
 
 ```
-Dueño                                Invitado
+Owner                                Guest
   │                                     │
-  │  levanta el nodo                    │
-  │  → abre :7272 en su PC              │
+  │  starts the node                    │
+  │  → opens :7272 on their PC          │
   │                                     │
-  └──────────  se comparte host:puerto ──────────► se conecta
+  └────────── shares host:port ──────────► connects
                                                 │
-                                          entra con su nickname
+                                          joins with nickname
 ```
 
-**Consecuencias directas:**
+**Direct consequences:**
 
-- Si el dueño apaga su PC, el servidor deja de existir para el mundo exterior.
-  Eso es correcto: nadie puede mandar sobre un servidor que no está corriendo.
-- Si el proceso muere por un crash, el servidor queda **inactivo**, no
-  destruido. Todos sus datos sobreviven en PostgreSQL. Al volver a levantarlo,
-  todo sigue ahí.
-- Borrar un servidor es una decisión del dueño. Si se borra, el puerto se cierra
-  y no hay nadie a quien apuntar.
+- If the owner turns their PC off, the server stops existing for the outside world.
+  That is correct: nobody can command a server that isn't running.
+- If the process dies from a crash, the server becomes **inactive**, not
+  destroyed. All its data survives in PostgreSQL. When bringing it back up,
+  everything is still there.
+- Deleting a server is the owner's decision. If deleted, the port closes
+  and there is nobody left to point to.
 
 ---
 
-## 2. Identidad: nickname y nada más
+## 2. Identity: nickname and nothing else
 
-**Decisión:** no hay cuentas globales. Sin email, sin password, sin registro.
+**Decision:** no global accounts. No email, no password, no registration.
 
-Una persona se identifica con un **nickname dentro de un servidor**. El mismo
-nickname en dos servidores son dos personas sin relación entre sí.
+A person identifies themselves with a **nickname inside a server**. The same
+nickname on two servers are two unrelated people.
 
-**Por qué:**
+**Why:**
 
-- El modelo mental de Recop es "esto lo hospeda mi amigo en su casa". Un
-  registro global implica una autoridad central, que es justo lo que Recop
-  elimina.
-- Abre la puerta a que alguien entre al servidor de un desconocido sin fricción:
-  abre el puerto, elige nickname, entra.
-- Reduce la superficie de ataque: no hay passwords que filtrar ni fuerza bruta
-  que implementar.
+- Recop's mental model is "my friend hosts this at home". A global registry
+  implies a central authority, which is exactly what Recop removes.
+- It lets someone join a stranger's server frictionless: open the port,
+  pick a nickname, join.
+- It reduces attack surface: no passwords to leak, no brute force to implement.
 
-**Pendiente por decisión del usuario:** el usuarioreserve un nombre propio para
-uso personal (chats privados). Está explícitamente fuera de alcance hasta que se
-diseñe; la arquitectura no lo impide.
+**Pending owner's decision:** the user reserves a personal name for personal
+use (private chats). Explicitly out of scope until designed; the architecture
+doesn't prevent it.
 
 ### Roles
 
-El dueño del servidor es su administrador. Se modelan roles por nivel:
+The server owner is its administrator. Roles are modeled by level:
 
-| Nivel | Rol | Puede |
+| Level | Role | Can |
 |---|---|---|
-| `owner` | Dueño | Todo, incluido borrar el servidor |
-| `admin` | Administrador | Gestionar canales y miembros |
-| `member` | Miembro | Chatear |
+| `owner` | Owner | Everything, including deleting the server |
+| `admin` | Administrator | Manage channels and members |
+| `member` | Member | Chat |
 
 ---
 
-## 3. Por qué PostgreSQL
+## 3. Why PostgreSQL
 
-El servidor guarda mensajes, canales, miembros y el estado del propio servidor.
-Necesitamos:
+The server stores messages, channels, members and the server's own state.
+We need:
 
-- Durabilidad: si el proceso se cae, no se pierde nada.
-- Consultas sobre historial con paginación y filtros.
-- Integridad referencial real entre canales, mensajes y miembros.
-- Controles de concurrencia: varias personas pueden estar escribiendo en el
-  mismo canal al mismo tiempo.
+- Durability: if the process crashes, nothing is lost.
+- History queries with pagination and filters.
+- Real referential integrity between channels, messages and members.
+- Concurrency controls: several people can write to the same channel at
+  the same time.
 
-SQLite no da nada de esto de forma razonable cuando el chat es real.
-
----
-
-## 4. Por qué Kafka para el chat
-
-**Decisión del usuario:** Apache Kafka transporta el chat.
-
-Kafka aporta:
-
-- **Fan-out** a varios consumidores del mismo topic, que es literalmente lo que
-  hace un canal con N personas conectadas.
-- **Replay**: un cliente que reconecta puede volver a leer desde un offset.
-- **Desacople**: el productor (quien escribe) no necesita conocer a los
-  consumidores (quienes escuchan).
-- **Aislamiento de fallas**: si un consumidor se cae, el mensaje queda en el log.
-
-### La tensión que hay que tener en cuenta
-
-> **Kafka es una dependencia pesada para un proceso que corre en la PC de un
-> usuario.** Hablar con un broker único implica levantar ZooKeeper o KRaft, tener
-> ZooKeeper operativo, y mantenerlo andando.
-
-Esto es una contradicción real con el objetivo de autohospedaje y hay que
-resolverla antes de que el producto se use. Opciones, **pendientes de tu
-decisión**:
-
-1. **Modo embebido**: Kafka corre dentro del mismo nodo Recop, en un proceso
-   separado que el nodo lanza y administra. El dueño no lo ve; si algo falla,
-   el nodo lo reporta.
-2. **Transporte con abstracción**: el bus de chat es una interfaz con una
-   implementación Kafka y una implementación local. Kafka es el modo "real"
-   (multiusuario, varios nodos), el modo local es el default para un solo dueño.
-3. **Kafka puro**: el dueño tiene que correr Kafka antes que Recop. Simple de
-   implementar, fricción alta de arranque.
-
-La implementación del PR de chat va a exponer el bus como una **interfaz**, así
-que la decisión no queda bloqueada. Pero conviene resolverla antes de construir
-sobre Kafka.
+SQLite doesn't reasonably provide any of this when chat is real.
 
 ---
 
-## 5. Estructura: apps estilo Django
+## 4. Why Kafka for chat
 
-Cada funcionalidad vive en `apps/<nombre>/` con el mismo layout siempre:
+**Owner's decision:** Apache Kafka transports chat.
 
-| Capa | Archivo | Responsabilidad | ¿Sabe de HTTP? |
+Kafka provides:
+
+- **Fan-out** to several consumers of the same topic, which is literally what
+  a channel with N connected people does.
+- **Replay**: a reconnecting client can read again from an offset.
+- **Decoupling**: the producer (writer) doesn't need to know the consumers
+  (listeners).
+- **Failure isolation**: if a consumer crashes, the message stays in the log.
+
+### The tension to keep in mind
+
+> **Kafka is a heavy dependency for a process running on a user's PC.**
+> Talking to a single broker means bringing up ZooKeeper or KRaft, keeping
+> ZooKeeper operational, and keeping it running.
+
+This is a real contradiction with the self-hosting goal and must be resolved
+before the product is used. Options, **pending your decision**:
+
+1. **Embedded mode**: Kafka runs inside the same Recop node, in a separate
+   process the node launches and manages. The owner never sees it; if something
+   fails, the node reports it.
+2. **Transport with abstraction**: the chat bus is an interface with a Kafka
+   implementation and a local implementation. Kafka is the "real" mode
+   (multi-user, several nodes), local mode is the default for a single owner.
+3. **Pure Kafka**: the owner must run Kafka before Recop. Simple to implement,
+   high startup friction.
+
+The chat PR implementation will expose the bus as an **interface**, so the
+decision isn't blocked. But it should be resolved before building on Kafka.
+
+---
+
+## 5. Structure: Django-style apps
+
+Each feature lives in `apps/<name>/` with the same layout always:
+
+| Layer | File | Responsibility | Knows HTTP? |
 |---|---|---|---|
-| **Model** | `models.py` | Persistencia (SQLAlchemy async) | No |
-| **Schema** | `schemas.py` | Contratos Pydantic | No |
-| **Service** | `services.py` | Lógica de negocio | **No** |
-| **View** | `api/` | Bindings HTTP | Sí |
+| **Model** | `models.py` | Persistence (async SQLAlchemy) | No |
+| **Schema** | `schemas.py` | Pydantic contracts | No |
+| **Service** | `services.py` | Business logic | **No** |
+| **View** | `api/` | HTTP bindings | Yes |
 
-**Por qué esta separación:**
+**Why this separation:**
 
-- La regla dura es que `services.py` no importa nada de FastAPI. La lógica de
-  negocio se puede testear sin levantar la API y va a servir igual para un
-  futuro cliente mobile que para la PC.
-- Los errores de dominio (`core/api/errors.py`) se lanzan desde el service y se
-  traducen a `application/problem+json` en un handler global. El service no
-  elige códigos HTTP.
+- The hard rule is that `services.py` imports nothing from FastAPI. Business
+  logic can be tested without bringing the API up and will serve a future
+  mobile client the same as a PC.
+- Domain errors (`core/api/errors.py`) are raised from the service and
+  translated to `application/problem+json` in a global handler. The service
+  doesn't pick HTTP codes.
 
-`core/registry.py` declara `INSTALLED_APPS`. Es el único lugar donde se agrega o
-quita una app, y define el orden en que Alembic ve los modelos.
-
----
-
-## 6. Mobile después, sin reescribir nada
-
-La API es HTTP + WebSocket, servida por Uvicorn, y el contrato se documenta solo
-en OpenAPI. Eso significa que el backend no asume que el cliente es una PC.
-
-Lo que sí conviene sostener desde ahora:
-
-- **Contrato explícito**: los schemas de Pydantic son el contrato. Si cambia, el
-  cliente mobile se entera al generar sus tipos.
-- **Sin estado de sesión en el servidor** más allá del tiempo de vida natural
-  de una conexión. Nada de `HttpOnlySession` atado a un navegador.
-- **Errores uniformes** (`application/problem+json`): un cliente mobile puede
-  mostrar el error sin casos especiales.
-- **Versionado bajo `/api/v1`** desde el primer día. Cambiar el contrato después
-  sería un problema; cambiarlo con un prefijo de versión, no.
+`core/registry.py` declares `INSTALLED_APPS`. It's the only place where an app
+is added or removed, and defines the order in which Alembic sees models.
 
 ---
 
-## 7. Estado del servidor
+## 6. Mobile later, without rewriting anything
 
-El ciclo de vida que implementa `apps/servers`:
+The API is HTTP + WebSocket, served by Uvicorn, and the contract is
+self-documented in OpenAPI. That means the backend doesn't assume the client
+is a PC.
 
-| Estado | Significado | ¿Acepta conexiones? |
+What should hold from now:
+
+- **Explicit contract**: Pydantic schemas are the contract. If it changes, the
+  mobile client learns about it when generating its types.
+- **No server-side session state** beyond a connection's natural lifetime.
+  No `HttpOnlySession` tied to a browser.
+- **Uniform errors** (`application/problem+json`): a mobile client can display
+  the error without special cases.
+- **Versioned under `/api/v1`** from day one. Changing the contract later would
+  be a problem; changing it with a version prefix is not.
+
+---
+
+## 7. Server state
+
+The lifecycle implemented by `apps/servers`:
+
+| State | Meaning | Accepts connections? |
 |---|---|---|
-| `creating` | Se está configurando. Efímero, nunca se expone al cliente | No |
-| `active` | Corriendo | **Sí** |
-| `inactive` | Apagado o con el proceso caído | No |
-| `deleted` | Eliminado por el dueño | No |
+| `creating` | Being set up. Ephemeral, never exposed to client | No |
+| `active` | Running | **Yes** |
+| `inactive` | Turned off or crashed process | No |
+| `deleted` | Deleted by owner | No |
 
-Dos reglas que sostienen el producto:
+Two rules sustaining the product:
 
-**Crear implica activar.** El dueño pidió desplegar, y un servidor desplegado
-escucha. No queda un estado intermedio que el cliente pueda observar.
+**Create implies activate.** The owner asked to deploy, and a deployed server
+listens. No intermediate state remains that the client can observe.
 
-**Al arrancar el nodo, todo lo que figura `active` pasa a `inactive`.**
-Es lo que hace funcionar el requisito de que "si se cierra el proceso, el
-servidor quede inactivo pero no funcione". Sin esto, un servidor que se cayó
-seguiría marcado como `active` en la base y el sistema creería que su puerto
-está abierto. Al volver a encenderlo, el dueño lo reactiva y lo encuentra
-**igual**: mismos canales, mismos miembros, mismos mensajes.
+**On node start, everything marked `active` becomes `inactive`.**
+This makes the requirement work that "if the process closes, the server stays
+inactive but doesn't work". Without this, a crashed server would stay marked
+`active` in the DB and the system would believe its port is open. When turning
+it back on, the owner reactivates it and finds it **the same**: same channels,
+same members, same messages.
 
-> No existe un estado `deleting`. Se evaluó y se descartó: el borrado es síncrono
-> e inmediato, así que un estado intermedio nunca sería observable por nadie.
-> Si algún día el borrado se vuelve asíncrono porque hay historial pesado que
-> limpiar, vuelve.
+> There is no `deleting` state. It was evaluated and discarded: deletion is
+> synchronous and immediate, so an intermediate state would never be observable
+> by anyone. If deletion ever becomes async because heavy history must be
+> cleaned, it comes back.
 
 ### Endpoints
 
 ```
-POST   /api/v1/servers                     desplegar (crea y activa)
-GET    /api/v1/servers                     listar, paginado
-GET    /api/v1/servers/{id}                detalle con canales
-GET    /api/v1/servers/by-slug/{slug}      buscar por el identificador que se comparte
-PATCH  /api/v1/servers/{id}                editar nombre / puerto / límite de miembros
-POST   /api/v1/servers/{id}/activate       volver a abrir el puerto
-POST   /api/v1/servers/{id}/deactivate     cerrar el puerto (conserva los datos)
-POST   /api/v1/servers/{id}/heartbeat      reportar que el proceso sigue vivo
-GET    /api/v1/servers/{id}/address        el host:puerto para compartir
-DELETE /api/v1/servers/{id}                eliminar de forma permanente
+POST   /api/v1/servers                     deploy (creates and activates)
+GET    /api/v1/servers                     list, paginated
+GET    /api/v1/servers/{id}                detail with channels
+GET    /api/v1/servers/by-slug/{slug}      lookup by shared identifier
+PATCH  /api/v1/servers/{id}                edit name / port / member limit
+POST   /api/v1/servers/{id}/activate       reopen the port
+POST   /api/v1/servers/{id}/deactivate     close the port (keeps data)
+POST   /api/v1/servers/{id}/heartbeat      report process is still alive
+GET    /api/v1/servers/{id}/address        the host:port to share
+DELETE /api/v1/servers/{id}                delete permanently
 ```
 
-### Dos cosas que quedan sin resolver
+### Two unresolved things
 
-1. **La dirección compartible no siempre lo es.** Por defecto el nodo escucha en
-   `0.0.0.0`, que es un comodín: no se puede conectar a `0.0.0.0`. La API lo
-   marca con `host_is_wildcard: true` en vez de adivinar la IP del dueño, porque
-   un nodo puede tener VPN, docker o varias placas de red. Falta decidir cómo se
-   resuelve: ¿el dueño tipea su IP a mano, la detectamos, o se la pedimos una
-   vez al desplegar?
-2. **El borrado es duro.** Hoy `DELETE` elimina la fila. Con mensajes adentro
-   eso es irreversible. ¿Querés borrado lógico, o que se conserve y se marque el
-   servidor como eliminado?
+1. **The shareable address isn't always shareable.** By default the node listens
+   on `0.0.0.0`, which is a wildcard: you can't connect to `0.0.0.0`. The API
+   flags it with `host_is_wildcard: true` instead of guessing the owner's IP,
+   because a node can have VPN, docker or several NICs. Still to decide how it
+   resolves: does the owner type their IP by hand, do we detect it, or ask once
+   at deploy time?
+2. **Deletion is hard.** Today `DELETE` removes the row. With messages inside
+   that's irreversible. Do you want soft delete, or keep and mark the server as
+   deleted?
 
 ---
 
-## Decisiones pendientes
+## Pending decisions
 
-Estas preguntas siguen abiertas a propósito, hasta que las resolvás:
+These questions stay open on purpose, until you resolve them:
 
-1. **Kafka en la PC del usuario** — ¿cómo se resuelve el problema de la
-   dependencia pesada? (ver sección 4)
-2. **Descubrimiento de servidores** — si un nodo escucha en `192.168.1.50:7272`,
-   ¿cómo lo encuentra un invitado? Hoy la idea es compartir `host:puerto` a mano.
-3. **Nombre personal vs nickname** — el usuario mencionó un nombre propio para
-   uso personal. ¿Es la misma entidad o separada?
-4. **Persistencia por owner** — ¿cada nodo guarda todo en su PostgreSQL local, o
-   hay backup/replicación?
-5. **Móvil** — ¿nativo, Flutter, React Native? La API no lo condiciona, pero el
-   cliente sí.
+1. **Kafka on the user's PC** — how to solve the heavy-dependency problem?
+   (see section 4)
+2. **Server discovery** — if a node listens on `192.168.1.50:7272`, how does a
+   guest find it? Today the idea is sharing `host:port` by hand.
+3. **Personal name vs nickname** — the user mentioned a personal name for
+   personal use. Is it the same entity or separate?
+4. **Per-owner persistence** — does each node keep everything in its local
+   PostgreSQL, or is there backup/replication?
+5. **Mobile** — native, Flutter, React Native? The API doesn't constrain it,
+   but the client does.

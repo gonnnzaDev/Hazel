@@ -1,19 +1,18 @@
-# Instalación
+# Installation
 
-Un comando en las cuatro plataformas. Los scripts hacen lo mismo en todas y
-terminan con el mismo entorno, porque las versiones salen de `uv.lock` y de
-`.python-version`.
+One command on all four platforms. Scripts do the same everywhere and end with
+the same environment, because versions come from `uv.lock` and `.python-version`.
 
-| Plataforma | Comando | Requisitos previos |
+| Platform | Command | Prerequisites |
 |---|---|---|
-| Linux | `./scripts/setup.sh` | `git` y `curl` |
+| Linux | `./scripts/setup.sh` | `git` and `curl` |
 | macOS | `./scripts/setup.sh` | `git` (Xcode tools) |
-| Windows | `.\scripts\setup.ps1` | Git para Windows |
-| Android | `./scripts/setup.sh` en Termux | `git`, `curl` |
+| Windows | `.\scripts\setup.ps1` | Git for Windows |
+| Android | `./scripts/setup.sh` in Termux | `git`, `curl` |
 
-**No hace falta tener Python instalado.** `uv` trae su propio interpreter
-Python, y `.python-version` fija cuál. Por eso todos terminan con exactamente la
-misma versión.
+**No need to have Python installed.** `uv` brings its own Python interpreter,
+and `.python-version` pins which one. That's why everyone ends with exactly the
+same version.
 
 ---
 
@@ -25,19 +24,19 @@ cd recop
 ./scripts/setup.sh
 ```
 
-Necesitás `curl`. En Debian/Ubuntu:
+You need `curl`. On Debian/Ubuntu:
 
 ```bash
 sudo apt install -y git curl
 ```
 
-En Fedora:
+On Fedora:
 
 ```bash
 sudo dnf install -y git curl
 ```
 
-En Arch:
+On Arch:
 
 ```bash
 sudo pacman -S --needed git curl
@@ -53,11 +52,11 @@ cd recop
 ./scripts/setup.sh
 ```
 
-macOS viene con `curl`. `git` viene con las Command Line Tools de Xcode; si no
-las tenés, el instalador te las ofrece solo.
+macOS ships `curl`. `git` ships with Xcode Command Line Tools; if you don't
+have them, the installer offers them automatically.
 
-Si te aparece un error de permisos al instalar `uv` en `/usr/local`, el script
-cae a `~/.local/bin` automáticamente.
+If you get a permission error installing `uv` to `/usr/local`, the script falls
+back to `~/.local/bin` automatically.
 
 ---
 
@@ -69,104 +68,103 @@ cd recop
 .\scripts\setup.ps1
 ```
 
-Si PowerShell bloquea la ejecución de scripts:
+If PowerShell blocks script execution:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\setup.ps1
 ```
 
-Para no tener que hacer eso cada vez, en PowerShell como administrador:
+To avoid doing that every time, in PowerShell as administrator:
 
 ```powershell
 Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
 ```
 
-Necesitás [Git para Windows](https://git-scm.com/download/win) y, para el
-stack completo, [Docker Desktop](https://www.docker.com/products/docker-desktop/).
+You need [Git for Windows](https://git-scm.com/download/win) and, for the full
+stack, [Docker Desktop](https://www.docker.com/products/docker-desktop/).
 
 ---
 
 ## Android (Termux)
 
-Android no corre Docker nativo. La vía es **Termux**, que sí lo corre en
-Android 7 en adelante.
+Android doesn't run native Docker. The way in is **Termux**, which does run it
+on Android 7 and up.
 
-Instalá Termux desde **F-Droid**, no desde el Play Store: la versión del Play
-Store está congelada en una versión vieja que rompe la instalación.
+Install Termux from **F-Droid**, not from the Play Store: the Play Store version
+is frozen on an old version that breaks installation.
 
 ```bash
 # 1. Termux → pkg install
 pkg update && pkg upgrade
 pkg install -y git curl clang libjpeg-turbo python
 
-# 2. Clonar e instalar
+# 2. Clone and install
 git clone https://github.com/gonnnzaDev/recop
 cd recop
 ./scripts/setup.sh
 ```
 
-El script detecta Termux y lo dice. Si no tenés Docker, te dice cómo
-configurarlo:
+The script detects Termux and says so. If you don't have Docker, it tells you
+how to set it up:
 
 ```bash
 pkg install -y docker
-# Si no está en tu repo, sumá el repo 'tur':
+# If it's not in your repo, add the 'tur' repo:
 pkg install tur-repo
 pkg install -y docker
 ```
 
-Después hay que darle acceso al socket, que en Android requiere un paso extra
-por las restricciones del kernel. **El camino más simple en Android es no usar
-Docker**: apuntá `RECOP_DATABASE_URL` y `RECOP_KAFKA_BOOTSTRAP_SERVERS` en el
-`.env` a unas bases de datos que ya tengas en otra máquina de la red, y corré
-las migraciones.
+Then you must grant socket access, which on Android takes an extra step due to
+kernel restrictions. **The simplest path on Android is not using Docker**: point
+`RECOP_DATABASE_URL` and `RECOP_KAFKA_BOOTSTRAP_SERVERS` in `.env` to databases
+you already have on another machine on the network, and run migrations.
 
-La imagen de Docker es multi-arquitectura y corre en `linux/arm64-v8` (Android
-64-bit) y `linux/arm/v7` (Android 32-bit), así que donde Docker funcione, la
-imagen funciona.
+The Docker image is multi-architecture and runs on `linux/arm64-v8` (64-bit
+Android) and `linux/arm/v7` (32-bit Android), so wherever Docker works, the
+image works.
 
-> **Pendiente:** falta probar el camino de Termux de punta a punta. Los scripts
-> lo contemplan, pero no lo verifiqué en un dispositivo real. Si te pasa algo
-> raro ahí, es el primer lugar donde mirar.
-
----
-
-## Qué hace el script
-
-1. Detecta la plataforma (Linux, macOS, Windows, Termux)
-2. Instala `uv` si no está
-3. `uv sync --locked` — instala **exactamente** lo que dice `uv.lock`
-4. Crea el `.env` con un `RECOP_SECRET_KEY` generado
-5. Levanta PostgreSQL y Kafka con Docker, si hay Docker
-6. Aplica las migraciones
-
-Es **idempotente**: correrlo dos veces no rompe nada. Si el `.env` ya existe, no
-lo toca.
-
-### Lo que garantiza
-
-Que todos tengan lo mismo no es prometido, es mecánico:
-
-- **Python**: `.python-version` dice `3.13`. `uv` descarga esa versión si no la
-  tiene.
-- **Dependencias**: `uv.lock` tiene la versión exacta de cada paquete, con sus
-  hashes. `uv sync --locked` falla si el lock no coincide con `pyproject.toml`,
-  así que nadie puede instalar sin querer una versión distinta.
-- **Configuración**: los valores por defecto salen de `.env.example`, que es el
-  mismo archivo para todos.
+> **Pending:** the Termux path still needs end-to-end testing. Scripts account
+> for it, but I haven't verified it on a real device. If something weird happens
+> there, that's the first place to look.
 
 ---
 
-## Comandos de uso diario
+## What the script does
 
-`make` no está en todas las máquinas, así que hay un equivalente en shell y
-otro en PowerShell. Los tres hacen lo mismo.
+1. Detects the platform (Linux, macOS, Windows, Termux)
+2. Installs `uv` if missing
+3. `uv sync --locked` — installs **exactly** what `uv.lock` says
+4. Creates `.env` with a generated `RECOP_SECRET_KEY`
+5. Brings up PostgreSQL and Kafka with Docker, if Docker exists
+6. Applies migrations
+
+It's **idempotent**: running it twice breaks nothing. If `.env` already exists,
+it doesn't touch it.
+
+### What it guarantees
+
+That everyone has the same isn't promised, it's mechanical:
+
+- **Python**: `.python-version` says `3.13`. `uv` downloads that version if it
+  doesn't have it.
+- **Dependencies**: `uv.lock` pins the exact version of each package, with
+  hashes. `uv sync --locked` fails if the lock doesn't match `pyproject.toml`,
+  so nobody can accidentally install a different version.
+- **Configuration**: defaults come from `.env.example`, the same file for
+  everyone.
+
+---
+
+## Daily-use commands
+
+`make` isn't on every machine, so there's a shell equivalent and a PowerShell
+one. All three do the same.
 
 ```bash
-./scripts/recop.sh up           # levantar PostgreSQL y Kafka
-./scripts/recop.sh api          # arrancar el nodo
-./scripts/recop.sh check        # lint + formato + tipos + tests
-./scripts/recop.sh help         # todos los comandos
+./scripts/recop.sh up           # bring up PostgreSQL and Kafka
+./scripts/recop.sh api          # start the node
+./scripts/recop.sh check        # lint + format + types + tests
+./scripts/recop.sh help         # all commands
 ```
 
 ```powershell
@@ -185,60 +183,59 @@ make help
 
 ---
 
-## Problemas frecuentes
+## Frequent issues
 
-**`docker: permission denied` en Linux**
+**`docker: permission denied` on Linux**
 
 ```bash
 sudo usermod -aG docker $USER
-# cerrá la sesión y volvé a abrirla
+# log out and back in
 ```
 
-**PowerShell dice "no se puede cargar el archivo"**
+**PowerShell says "cannot load file"**
 
-El problema es la política de ejecución, no el script:
+That's the execution policy, not the script:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\setup.ps1
 ```
 
-**Los acentos se ven raros en Windows**
+**Accents look weird on Windows**
 
-`setup.ps1` y `recop.ps1` llevan BOM UTF-8 a propósito. Windows PowerShell 5.1
-lee los `.ps1` sin BOM como ANSI y destroza los acentos. Si tu editor te saca el
-BOM al guardar, volvé a ponérselo.
+`setup.ps1` and `recop.ps1` carry a UTF-8 BOM on purpose. Windows PowerShell 5.1
+reads `.ps1` without BOM as ANSI and mangles accents. If your editor strips the
+BOM on save, put it back.
 
-**`uv sync` falla con "the lockfile is not up to date"**
+**`uv sync` fails with "the lockfile is not up to date"**
 
-Alguien cambió `pyproject.toml` sin regenerar el lock. Si no sos vos:
+Someone changed `pyproject.toml` without regenerating the lock. If it wasn't you:
 
 ```bash
 uv lock
 ```
 
-**No me entra nadie desde la red local**
+**Nobody can join me from the local network**
 
-El puerto tiene que estar publicado en todas las interfaces, no solo en
-localhost. En Docker, `RECOP_PUBLISH_HOST=0.0.0.0`. Y el firewall del sistema
-tiene que dejarlo pasar.
+The port must be published on all interfaces, not just localhost. In Docker,
+`RECOP_PUBLISH_HOST=0.0.0.0`. And the system firewall must let it through.
 
 ---
 
-## Desinstalar
+## Uninstall
 
-No hay nada que instalar en el sistema: el script deja todo dentro del proyecto.
-
-```bash
-rm -rf .venv          # el entorno de Python
-rm .env               # tu configuración y secreto
-```
-
-Si usaste Docker:
+Nothing is installed on the system: the script leaves everything inside the project.
 
 ```bash
-./scripts/recop.sh down       # para los servicios
-./scripts/recop.sh reset      # para los servicios y borra los volúmenes
+rm -rf .venv          # Python environment
+rm .env               # your config and secret
 ```
 
-`reset` **borra la base de datos**. Es el comando destructivo; usalo solo si
-querés empezar de cero.
+If you used Docker:
+
+```bash
+./scripts/recop.sh down       # stop services
+./scripts/recop.sh reset      # stop services and delete volumes
+```
+
+`reset` **deletes the database**. It's the destructive command; use it only if
+you want to start from scratch.

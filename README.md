@@ -1,38 +1,38 @@
 <h1 align="center">Recop</h1>
 
 <p align="center">
-  <b>Tu chat. Tu máquina. Tu puerto.</b><br>
-  Charlá con tus amigos en un servidor que vive en tu propia compu.
+  <b>Your chat. Your machine. Your port.</b><br>
+  Chat with your friends on a server living on your own computer.
 </p>
 
 ---
 
-## Qué es
+## What it is
 
-Recop es un chat como Discord, pero **sin nadie en el medio**. No hay empresa ni servidores ajenos: el servidor lo prendés vos.
+Recop is a Discord-like chat, but **with no one in the middle**. No company, no third-party servers: you turn the server on yourself.
 
-1. Encendés tu servidor.
-2. Le pasás tu dirección a tus amigos.
-3. Chatean.
-4. Cuando querés, lo apagás y se cierra todo.
+1. Turn your server on.
+2. Share your address with your friends.
+3. Chat.
+4. When you want, turn it off and everything shuts down.
 
-**Sin cuentas:** entrás con un nombre y listo. El mismo nombre puede existir en dos servidores distintos, y son dos personas distintas.
+**No accounts:** you join with a name and that's it. The same name can exist on two different servers, and they are two different people.
 
-**Sin sorpresas:** si el servicio se cae, es porque apagaste tu compu.
+**No surprises:** if the service goes down, it's because you turned your computer off.
 
 ---
 
-## Qué necesitás
+## What you need
 
-- Docker, o bien Python 3.13+, PostgreSQL y Kafka si preferís instalarlo a mano
+- Docker, or Python 3.13+, PostgreSQL and Kafka if you prefer a manual install
 - Git
-- Que tus amigos puedan llegar a tu compu (el puerto que elijas tiene que estar accesible)
+- Your friends must be able to reach your computer (the port you choose has to be accessible)
 
 ---
 
-## Instalación
+## Installation
 
-### Con Docker (lo más fácil)
+### With Docker (easiest)
 
 ```bash
 git clone https://github.com/gonnnzaDev/recop
@@ -41,7 +41,7 @@ cp .env.example .env
 docker compose up
 ```
 
-### A mano
+### Manual
 
 ```bash
 git clone https://github.com/gonnnzaDev/recop
@@ -53,55 +53,55 @@ uv run alembic upgrade head
 uv run python -m core
 ```
 
-> Muy pronto: un instalador de un solo paso para Windows, macOS, Linux y Android (Termux).
+> Coming soon: a one-step installer for Windows, macOS, Linux and Android (Termux).
 
 ---
 
-## Cómo se usa
+## How to use
 
-Encendé todo:
+Turn everything on:
 
 ```bash
-make up     # base de datos y Kafka
-make api    # tu nodo
+make up     # database and Kafka
+make api    # your node
 ```
 
-En otra terminal, creá tu servidor:
+In another terminal, create your server:
 
 ```bash
 curl -X POST localhost:7272/api/v1/servers \
   -H 'Content-Type: application/json' \
-  -d '{"name":"Casa de Luis","slug":"casa-de-luis",
+  -d '{"name":"Luis House","slug":"luis-house",
        "owner_nickname":"luis","bind_port":7272}'
 ```
 
-Te devuelve un `id` y tu puerto queda abierto.
+It returns an `id` and your port stays open.
 
-Después, lo de todos los días:
+Then, everyday usage:
 
 ```bash
-# Ver la dirección para pasarles a tus amigos
+# See the address to share with your friends
 curl localhost:7272/api/v1/servers/{id}/address
 
-# Ver tus servidores
+# See your servers
 curl localhost:7272/api/v1/servers
 
-# Apagar un servidor (no se pierde nada)
+# Turn a server off (nothing is lost)
 curl -X POST localhost:7272/api/v1/servers/{id}/deactivate
 
-# Volver a prenderlo
+# Turn it back on
 curl -X POST localhost:7272/api/v1/servers/{id}/activate
 ```
 
 ---
 
-## Qué pasa cuando lo apagás
+## What happens when you turn it off
 
-| Estado | Puerto | Tus datos |
+| State | Port | Your data |
 |---|---|---|
-| Activo | Abierto | Intactos |
-| Apagado a propósito | Cerrado | Intactos |
-| Apagado porque se cayó | Cerrado | Intactos |
-| Eliminado | Cerrado | Borrados |
+| Active | Open | Intact |
+| Turned off on purpose | Closed | Intact |
+| Turned off by crash | Closed | Intact |
+| Deleted | Closed | Deleted |
 
-**Apagar nunca borra nada.** Si tu compu se reinicia, tus servidores vuelven apagados pero con todo adentro. Los prendés de nuevo y siguen como los dejaste.
+**Turning off never deletes anything.** If your computer restarts, your servers come back turned off but with everything inside. Turn them back on and they continue as you left them.
