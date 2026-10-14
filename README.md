@@ -68,15 +68,6 @@ make front
 Desde ahí creás tus servidores, los encendés y apagás, copiás la dirección para
 tus amigos y chateás. Ver [`front/README.md`](front/README.md).
 
-### Con la app móvil
-
-```bash
-make mobile
-```
-
-Abre Expo: escaneás el QR con Expo Go y tenés la app en el teléfono. Por ahora
-corre con datos de prueba, sin backend. Ver [`mobile/README.md`](mobile/README.md).
-
 ### Desde la terminal
 
 Encendé todo:
