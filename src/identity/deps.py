@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+"""Token introspection: middleware validates token and returns the member."""
+
 from typing import Annotated
 
 from fastapi import Depends, Header, Query, WebSocket

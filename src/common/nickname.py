@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+"""Normalize + valid + reserved names."""
+
 import re
 import unicodedata
 
