@@ -104,7 +104,7 @@ export function renderAll(): void {
 
 function updateTitle(): void {
   const session = currentSession();
-  document.title = state.view === 'server' && session ? `${session.name} · Recop` : 'Recop';
+  document.title = state.view === 'server' && session ? `${session.name} · Hazel` : 'Hazel';
 }
 
 export function currentSession(): Session | null {
@@ -270,7 +270,7 @@ function userPanel(): HTMLElement {
       h(
         'span',
         { class: 'user-panel-names' },
-        h('strong', null, 'Recop'),
+        h('strong', null, 'Hazel'),
         h('small', null, nodeStatusText()),
       ),
     );
@@ -414,7 +414,7 @@ export function renderHomeMain(): void {
     body = ui.emptyState({
       iconName: 'wifiOff',
       title: 'No encontramos tu nodo',
-      text: `Recop busca tu nodo en ${store.getSettings().nodeUrl}. Arrancalo con "make api" o "docker compose up" y tocá Reintentar. Si solo querés entrar al servidor de un amigo, no necesitás un nodo.`,
+      text: `Hazel busca tu nodo en ${store.getSettings().nodeUrl}. Arrancalo con "make api" o "docker compose up" y tocá Reintentar. Si solo querés entrar al servidor de un amigo, no necesitás un nodo.`,
       actions: [
         h(
           'button',

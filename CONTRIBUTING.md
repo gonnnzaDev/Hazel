@@ -1,7 +1,7 @@
 
-# Contribuir a Recop
+# Contribuir a Hazel
 
-¡Gracias por querer sumarte! Recop es un proyecto chico y cualquier ayuda sirve: código, tests, documentación o reportar errores.
+¡Gracias por querer sumarte! Hazel es un proyecto chico y cualquier ayuda sirve: código, tests, documentación o reportar errores.
 
 ---
 
@@ -18,14 +18,14 @@ No se puede subir código directo a este repositorio. Todo entra por **fork + pu
 
 ### 1. Hacé un fork
 
-Entrá a [github.com/gonnnzaDev/recop](https://github.com/gonnnzaDev/recop) y tocá el botón **Fork** (arriba a la derecha). Eso crea una copia del proyecto en tu cuenta.
+Entrá a [github.com/gonnnzaDev/hazel](https://github.com/gonnnzaDev/hazel) y tocá el botón **Fork** (arriba a la derecha). Eso crea una copia del proyecto en tu cuenta.
 
 ### 2. Clonalo en tu compu
 
 ```bash
-git clone https://github.com/TU-USUARIO/recop
-cd recop
-git remote add upstream https://github.com/gonnnzaDev/recop
+git clone https://github.com/TU-USUARIO/hazel
+cd hazel
+git remote add upstream https://github.com/gonnnzaDev/hazel
 ```
 
 ### 3. Armá el entorno
@@ -34,7 +34,7 @@ Necesitás Python 3.14+, [uv](https://docs.astral.sh/uv/) y Docker.
 
 ```bash
 uv sync
-echo "RECOP_SECRET_KEY=$(python3 -c 'import secrets; print(secrets.token_urlsafe(32))')" > .env
+echo "HAZEL_SECRET_KEY=$(python3 -c 'import secrets; print(secrets.token_urlsafe(32))')" > .env
 make up                      # levanta PostgreSQL y Kafka
 uv run alembic upgrade head
 make api                     # arranca el nodo
@@ -53,7 +53,7 @@ git checkout -b fix/error-al-apagar-servidor
 ```bash
 make check   # lint + formato + tipos + tests
 make test    # solo tests
-make test-integration RECOP_TEST_DATABASE_URL=postgresql+asyncpg://recop:recop@localhost:5432/recop_test
+make test-integration HAZEL_TEST_DATABASE_URL=postgresql+asyncpg://hazel:hazel@localhost:5432/hazel_test
 ```
 
 **Tu PR tiene que pasar `make check`.** Si agregás algo nuevo, agregá también su test.
@@ -94,7 +94,7 @@ git push origin main
 ## Cómo está armado el código
 
 ```
-recop/
+hazel/
 ├── src/             # toda la lógica vive acá
 │   ├── common/      #   tipos, errores, reglas de nickname (model/view)
 │   ├── servers/     #   ciclo de vida del servidor (model/repository/service/view)

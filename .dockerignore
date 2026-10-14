@@ -1,4 +1,4 @@
-# Contexto de build de la imagen de Recop.
+# Contexto de build de la imagen de Hazel.
 #
 # Acá va todo lo que NO tiene que entrar al daemon de Docker. El contexto se
 # manda entero antes de construir, así que sin esto un `.venv/` de 200 MB

@@ -1,4 +1,4 @@
-// Cliente HTTP de la API de Recop (`/api/v1`).
+// Cliente HTTP de la API de Hazel (`/api/v1`).
 //
 // Hay dos tipos de proceso del otro lado, con la misma API:
 //
@@ -63,7 +63,7 @@ export function asApiError(error: unknown): ApiError {
 async function transport(
   request: Required<Pick<ProxyRequest, 'url' | 'method' | 'headers' | 'timeoutMs'>> & ProxyRequest,
 ): Promise<ProxyResponse> {
-  if (window.recopBridge) return window.recopBridge.request(request);
+  if (window.hazelBridge) return window.hazelBridge.request(request);
 
   const { url, method, headers, body, timeoutMs } = request;
   const controller = new AbortController();
@@ -171,12 +171,12 @@ export interface Address {
 }
 
 // Lo que la gente pega para unirse: "192.168.1.50:7273/casa-de-luis".
-// También acepta "http://…" y "recop://…", y el slug es opcional.
+// También acepta "http://…" y "hazel://…", y el slug es opcional.
 export function parseAddress(input: string): Address {
   let value = input.trim();
   if (!value) throw new ApiError('Escribí la dirección que te pasaron.');
 
-  value = value.replace(/^(recop|https?):\/\//i, '');
+  value = value.replace(/^(hazel|https?):\/\//i, '');
   const [hostPort = '', ...rest] = value.split('/');
   const slug = rest.find(Boolean) ?? null;
 

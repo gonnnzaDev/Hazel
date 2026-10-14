@@ -145,7 +145,7 @@ export interface Settings {
   lastView?: string;
 }
 
-// En Recop no hay cuenta global: cada servidor al que entrás te da un token
+// En Hazel no hay cuenta global: cada servidor al que entrás te da un token
 // propio. Una sesión es eso: dónde está el servidor, con qué nickname entraste
 // y el token.
 export interface Session {

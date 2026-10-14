@@ -45,7 +45,7 @@ export function toast(
 
 export async function copy(text: string, label = 'Copiado al portapapeles'): Promise<void> {
   try {
-    if (window.recopBridge) await window.recopBridge.copy(text);
+    if (window.hazelBridge) await window.hazelBridge.copy(text);
     else await navigator.clipboard.writeText(text);
     toast(label, { kind: 'success', timeout: 2000 });
   } catch {

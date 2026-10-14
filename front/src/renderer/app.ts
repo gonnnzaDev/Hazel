@@ -1118,7 +1118,7 @@ function boot(): void {
   });
 
   // Para mirar el estado desde las herramientas de desarrollo (`npm run dev`).
-  window.Recop = { state, store };
+  window.Hazel = { state, store };
 
   const settings = store.getSettings();
   applyTheme(settings.theme);

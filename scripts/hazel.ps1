@@ -1,20 +1,20 @@
 ﻿<#
 .SYNOPSIS
-    Recop — everyday commands for Windows.
+    Hazel — everyday commands for Windows.
 
 .DESCRIPTION
-    Equivalent to scripts/recop.sh and the Makefile, for Windows.
+    Equivalent to scripts/hazel.sh and the Makefile, for Windows.
 
-        .\scripts\recop.ps1 <command>
+        .\scripts\hazel.ps1 <command>
 
     Each command does the same as its Makefile target, so all three work.
 
 .EXAMPLE
-    .\scripts\recop.ps1 up
+    .\scripts\hazel.ps1 up
 
 .NOTES
     If PowerShell blocks script execution:
-        powershell -ExecutionPolicy Bypass -File .\scripts\recop.ps1 up
+        powershell -ExecutionPolicy Bypass -File .\scripts\hazel.ps1 up
 #>
 
 #Requires -Version 5.1
@@ -57,7 +57,7 @@ function Require-Docker {
 }
 
 function Wait-ForPostgres {
-    $user = "recop"
+    $user = "hazel"
     if (Test-Path ".env") {
         foreach ($line in (Get-Content ".env" -ErrorAction SilentlyContinue)) {
             if ($line -match '^POSTGRES_USER=(.*)$') { $user = $Matches[1]; break }
@@ -100,7 +100,7 @@ switch ($Command) {
     }
     "revision" {
         if ($Rest.Count -eq 0) {
-            Write-Host 'usage: .\scripts\recop.ps1 revision "message"' -ForegroundColor Red
+            Write-Host 'usage: .\scripts\hazel.ps1 revision "message"' -ForegroundColor Red
             exit 1
         }
         & uv run alembic revision --autogenerate -m $Rest[0]
@@ -111,9 +111,9 @@ switch ($Command) {
     "typecheck" { & uv run mypy apps core }
     "test"      { & uv run pytest @Rest }
     "test-integration" {
-        if (-not $env:RECOP_TEST_DATABASE_URL) {
-            Write-Host "Missing RECOP_TEST_DATABASE_URL. E.g.:" -ForegroundColor Red
-            Write-Host '  .\scripts\recop.ps1 test-integration postgresql+asyncpg://recop:recop@localhost:5432/recop_test' -ForegroundColor Red
+        if (-not $env:HAZEL_TEST_DATABASE_URL) {
+            Write-Host "Missing HAZEL_TEST_DATABASE_URL. E.g.:" -ForegroundColor Red
+            Write-Host '  .\scripts\hazel.ps1 test-integration postgresql+asyncpg://hazel:hazel@localhost:5432/hazel_test' -ForegroundColor Red
             exit 1
         }
         & uv run pytest @Rest
@@ -129,7 +129,7 @@ switch ($Command) {
         $port = "7272"
         if (Test-Path ".env") {
             foreach ($line in (Get-Content ".env" -ErrorAction SilentlyContinue)) {
-                if ($line -match '^RECOP_PORT=(\d+)$') { $port = $Matches[1]; break }
+                if ($line -match '^HAZEL_PORT=(\d+)$') { $port = $Matches[1]; break }
             }
         }
         Write-Host "node health on localhost:$port`n"
@@ -144,7 +144,7 @@ switch ($Command) {
 
     { $_ -in @("help", "-h", "--help") } {
         Write-Host @"
-Recop — commands
+Hazel — commands
 
   Development
     up                Start PostgreSQL and Kafka
@@ -171,15 +171,15 @@ Recop — commands
     stack-logs        Node logs
 
 Examples
-    .\scripts\recop.ps1 up
-    `$env:RECOP_TEST_DATABASE_URL='postgresql+asyncpg://recop:recop@localhost:5432/recop_test'
-    .\scripts\recop.ps1 test-integration
+    .\scripts\hazel.ps1 up
+    `$env:HAZEL_TEST_DATABASE_URL='postgresql+asyncpg://hazel:hazel@localhost:5432/hazel_test'
+    .\scripts\hazel.ps1 test-integration
 "@
     }
 
     default {
         Write-Host "unknown command: $Command" -ForegroundColor Red
-        & $PSScriptRoot\recop.ps1 help
+        & $PSScriptRoot\hazel.ps1 help
         exit 1
     }
 }

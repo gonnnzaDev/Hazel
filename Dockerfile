@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7
 #
-# Recop image.
+# Hazel image.
 #
 # Multi-stage build: the first stage compiles the dependencies, the second copies
 # only the result. So the final image carries no compiler, no uv, and none of
@@ -12,7 +12,7 @@
 # Android 64-bit) and arm/v7 (Android 32-bit) without changing a line.
 #
 # Building for several architectures at once requires buildx:
-#     docker buildx build --platform linux/amd64,linux/arm64 -t gonnnzadev/recop .
+#     docker buildx build --platform linux/amd64,linux/arm64 -t gonnnzadev/hazel .
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Stage 1: builder
@@ -70,37 +70,37 @@ RUN apt-get update \
 
 # Unprivileged user. A node is a process running on somebody's PC;
 # it should not be able to write to /usr or create users.
-RUN groupadd --system --gid 1001 recap \
-    && useradd --system --uid 1001 --gid recap --home-dir /app --shell /usr/sbin/nologin recap
+RUN groupadd --system --gid 1001 hazel \
+    && useradd --system --uid 1001 --gid hazel --home-dir /app --shell /usr/sbin/nologin hazel
 
 WORKDIR /app
 
 # Default environment. Everything can be overridden with `-e` or compose.
-# `RECOP_HOST=0.0.0.0` is mandatory in a container: listening on 127.0.0.1
+# `HAZEL_HOST=0.0.0.0` is mandatory in a container: listening on 127.0.0.1
 # means the published port reaches nobody.
 ENV \
     PATH="/opt/venv/bin:$PATH" \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
-    RECOP_ENV=prod \
-    RECOP_HOST=0.0.0.0 \
-    RECOP_PORT=7272 \
-    RECOP_AUTO_MIGRATE=true
+    HAZEL_ENV=prod \
+    HAZEL_HOST=0.0.0.0 \
+    HAZEL_PORT=7272 \
+    HAZEL_AUTO_MIGRATE=true
 
-COPY --from=builder --chown=recap:recap /opt/venv /opt/venv
-COPY --from=builder --chown=recap:recap /src/src ./src
-COPY --from=builder --chown=recap:recap /src/migrations ./migrations
-COPY --from=builder --chown=recap:recap /src/alembic.ini ./alembic.ini
+COPY --from=builder --chown=hazel:hazel /opt/venv /opt/venv
+COPY --from=builder --chown=hazel:hazel /src/src ./src
+COPY --from=builder --chown=hazel:hazel /src/migrations ./migrations
+COPY --from=builder --chown=hazel:hazel /src/alembic.ini ./alembic.ini
 
-RUN mkdir -p /app/data && chown recap:recap /app/data
+RUN mkdir -p /app/data && chown hazel:hazel /app/data
 
 # The entrypoint waits for the database, applies migrations, and only then
 # becomes the API process. `exec` in the script makes PID 1 Uvicorn,
 # not the shell.
-COPY --chown=recap:recap docker-entrypoint.sh /usr/local/bin/recop-entrypoint
-RUN chmod +x /usr/local/bin/recop-entrypoint
+COPY --chown=hazel:hazel docker-entrypoint.sh /usr/local/bin/hazel-entrypoint
+RUN chmod +x /usr/local/bin/hazel-entrypoint
 
-USER recap
+USER hazel
 
 EXPOSE 7272
 
@@ -110,8 +110,8 @@ EXPOSE 7272
 # real state of the dependencies is already in `/health/ready`, which is what
 # the rest of the stack queries.
 #
-# Shell form (not exec) on purpose: the only one expanding ${RECOP_PORT}.
+# Shell form (not exec) on purpose: the only one expanding ${HAZEL_PORT}.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
-    CMD python -c "import os,sys,urllib.request; url=f\"http://127.0.0.1:{os.environ.get('RECOP_PORT','7272')}/health\"; sys.exit(0 if urllib.request.urlopen(url, timeout=4).status == 200 else 1)"
+    CMD python -c "import os,sys,urllib.request; url=f\"http://127.0.0.1:{os.environ.get('HAZEL_PORT','7272')}/health\"; sys.exit(0 if urllib.request.urlopen(url, timeout=4).status == 200 else 1)"
 
-ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/recop-entrypoint"]
+ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/hazel-entrypoint"]

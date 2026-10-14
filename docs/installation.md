@@ -19,8 +19,8 @@ matching `requires-python` in `pyproject.toml`.
 ## Linux
 
 ```bash
-git clone https://github.com/gonnnzaDev/recop
-cd recop
+git clone https://github.com/gonnnzaDev/hazel
+cd hazel
 ./scripts/setup.sh
 ```
 
@@ -47,8 +47,8 @@ sudo pacman -S --needed git curl
 ## macOS
 
 ```bash
-git clone https://github.com/gonnnzaDev/recop
-cd recop
+git clone https://github.com/gonnnzaDev/hazel
+cd hazel
 ./scripts/setup.sh
 ```
 
@@ -63,8 +63,8 @@ back to `~/.local/bin` automatically.
 ## Windows
 
 ```powershell
-git clone https://github.com/gonnnzaDev/recop
-cd recop
+git clone https://github.com/gonnnzaDev/hazel
+cd hazel
 .\scripts\setup.ps1
 ```
 
@@ -99,8 +99,8 @@ pkg update && pkg upgrade
 pkg install -y git curl clang libjpeg-turbo python
 
 # 2. Clone and install
-git clone https://github.com/gonnnzaDev/recop
-cd recop
+git clone https://github.com/gonnnzaDev/hazel
+cd hazel
 ./scripts/setup.sh
 ```
 
@@ -116,7 +116,7 @@ pkg install -y docker
 
 Then you must grant socket access, which on Android takes an extra step due to
 kernel restrictions. **The simplest path on Android is not using Docker**: point
-`RECOP_DATABASE_URL` and `RECOP_KAFKA_BOOTSTRAP_SERVERS` in `.env` to databases
+`HAZEL_DATABASE_URL` and `HAZEL_KAFKA_BOOTSTRAP_SERVERS` in `.env` to databases
 you already have on another machine on the network, and run migrations.
 
 The Docker image is multi-architecture and runs on `linux/arm64-v8` (64-bit
@@ -134,7 +134,7 @@ image works.
 1. Detects the platform (Linux, macOS, Windows, Termux)
 2. Installs `uv` if missing
 3. `uv sync --locked` — installs **exactly** what `uv.lock` says
-4. Creates `.env` with a generated `RECOP_SECRET_KEY`
+4. Creates `.env` with a generated `HAZEL_SECRET_KEY`
 5. Brings up PostgreSQL and Kafka with Docker, if Docker exists
 6. Applies migrations
 
@@ -151,7 +151,7 @@ That everyone has the same isn't promised, it's mechanical:
   hashes. `uv sync --locked` fails if the lock doesn't match `pyproject.toml`,
   so nobody can accidentally install a different version.
 - **Configuration**: defaults live in `src/config/conf.py`, the same for
-  everyone. Only `RECOP_SECRET_KEY` must be unique per install.
+  everyone. Only `HAZEL_SECRET_KEY` must be unique per install.
 
 ---
 
@@ -161,17 +161,17 @@ That everyone has the same isn't promised, it's mechanical:
 one. All three do the same.
 
 ```bash
-./scripts/recop.sh up           # bring up PostgreSQL and Kafka
-./scripts/recop.sh api          # start the node
-./scripts/recop.sh check        # lint + format + types + tests
-./scripts/recop.sh help         # all commands
+./scripts/hazel.sh up           # bring up PostgreSQL and Kafka
+./scripts/hazel.sh api          # start the node
+./scripts/hazel.sh check        # lint + format + types + tests
+./scripts/hazel.sh help         # all commands
 ```
 
 ```powershell
-.\scripts\recop.ps1 up
-.\scripts\recop.ps1 api
-.\scripts\recop.ps1 check
-.\scripts\recop.ps1 help
+.\scripts\hazel.ps1 up
+.\scripts\hazel.ps1 api
+.\scripts\hazel.ps1 check
+.\scripts\hazel.ps1 help
 ```
 
 ```bash
@@ -202,7 +202,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\setup.ps1
 
 **Accents look weird on Windows**
 
-`setup.ps1` and `recop.ps1` carry a UTF-8 BOM on purpose. Windows PowerShell 5.1
+`setup.ps1` and `hazel.ps1` carry a UTF-8 BOM on purpose. Windows PowerShell 5.1
 reads `.ps1` without BOM as ANSI and mangles accents. If your editor strips the
 BOM on save, put it back.
 
@@ -217,7 +217,7 @@ uv lock
 **Nobody can join me from the local network**
 
 The port must be published on all interfaces, not just localhost. In Docker,
-`RECOP_PUBLISH_HOST=0.0.0.0`. And the system firewall must let it through.
+`HAZEL_PUBLISH_HOST=0.0.0.0`. And the system firewall must let it through.
 
 ---
 
@@ -233,8 +233,8 @@ rm .env               # your config and secret
 If you used Docker:
 
 ```bash
-./scripts/recop.sh down       # stop services
-./scripts/recop.sh reset      # stop services and delete volumes
+./scripts/hazel.sh down       # stop services
+./scripts/hazel.sh reset      # stop services and delete volumes
 ```
 
 `reset` **deletes the database**. It's the destructive command; use it only if

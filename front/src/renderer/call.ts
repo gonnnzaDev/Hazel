@@ -56,7 +56,7 @@ export class CallError extends Error {
 
 function micErrorMessage(error: unknown): string {
   const name = error instanceof Error ? error.name : '';
-  if (name === 'NotAllowedError') return 'Recop no tiene permiso para usar el micrófono.';
+  if (name === 'NotAllowedError') return 'Hazel no tiene permiso para usar el micrófono.';
   if (name === 'NotFoundError') return 'No encontramos ningún micrófono conectado.';
   return 'No se pudo abrir el micrófono.';
 }

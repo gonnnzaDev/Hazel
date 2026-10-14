@@ -160,7 +160,7 @@ class GroupSupervisor:
 
     def _child_env(self) -> dict[str, str]:
         env = dict(os.environ)
-        env["RECOP_ROLE"] = "group"
+        env["HAZEL_ROLE"] = "group"
         env["PYTHONUNBUFFERED"] = "1"
         return env
 

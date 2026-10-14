@@ -22,6 +22,11 @@ coverage.xml
 .ruff_cache/
 .uv-cache/
 
+# ─── Tests locales (no se commitean: quedan solo en tu PC) ────────────────────
+tests/
+test_*.py
+*_test.py
+
 # ─── Configuración local (NUNCA commitear) ────────────────────────────────────
 .env
 .env.*

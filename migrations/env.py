@@ -10,8 +10,8 @@ from sqlalchemy import engine_from_config, pool
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
+from config.bdd_config.bdd_config import Base
 from config.conf import get_settings
-from core.db.base import Base
 from core.registry import app_registry
 
 for _app_name in app_registry.installed:
