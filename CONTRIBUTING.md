@@ -30,7 +30,7 @@ git remote add upstream https://github.com/gonnnzaDev/recop
 
 ### 3. Armá el entorno
 
-Necesitás Python 3.13+, [uv](https://docs.astral.sh/uv/) y Docker.
+Necesitás Python 3.14+, [uv](https://docs.astral.sh/uv/) y Docker.
 
 ```bash
 uv sync

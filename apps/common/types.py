@@ -6,7 +6,6 @@ ids, timestamps y tipos de Nickname.
 
 from __future__ import annotations
 
-import secrets
 import uuid
 from datetime import UTC, datetime
 
@@ -18,42 +17,12 @@ RecordId = uuid.UUID
 # aleatorios. Ordenar por id equivale a ordenar por tiempo de creación, que es
 # justo lo que necesitamos para paginar sin un índice extra.
 #
-# `uuid.uuid7()` todavía no está en Python 3.13 (llega en 3.14), así que se
-# implementa acá. Cuando el proyecto migre a 3.14, esto se puede borrar y usar
-# el de la stdlib.
-
-# Bits de timestamp: unix_ts_ms en milisegundos.
-_TIMESTAMP_MASK = (1 << 48) - 1
-
-
-def _uuid7() -> uuid.UUID:
-    """Genera un UUID v7 conforme a RFC 9562.
-
-    Layout de 128 bits:
-
-        | 48 bits timestamp | 4 version | 12 rand | 6 rand | 62 rand |
-
-    `uuid.UUID(version=...)` de la stdlib solo acepta versiones 1 a 5, así que
-    los bits de versión y variante se escriben a mano.
-    """
-    timestamp_ms = int(utcnow().timestamp() * 1000) & _TIMESTAMP_MASK
-
-    rand_a = secrets.randbits(12)  # bits 15..0
-    rand_b = secrets.randbits(62)  # bits 61..16
-
-    value = (timestamp_ms << 80) | (rand_b << 16) | rand_a
-
-    # version = 7 (bits 79..76)
-    value = (value & ~(0xF << 76)) | (0x7 << 76)
-    # variant = RFC 4122 (bits 63..62)
-    value = (value & ~(0x3 << 62)) | (0b10 << 62)
-
-    return uuid.UUID(int=value)
+# Python 3.14 trae `uuid.uuid7()` en la stdlib, así que se usa directo.
 
 
 def new_id() -> RecordId:
     """Genera un id nuevo para una entidad del dominio."""
-    return _uuid7()
+    return uuid.uuid7()
 
 
 def utcnow() -> datetime:
