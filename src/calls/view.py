@@ -9,6 +9,13 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from starlette.websockets import WebSocketDisconnect
 
+from calls.model import Peer
+from calls.service import (
+    call_manager,
+    is_forwardable,
+    message_kind,
+    parse_signal,
+)
 from common.types import RecordId
 from config.bdd_config.bdd_config import session_scope
 from core.api.deps import SettingsDep
@@ -20,13 +27,6 @@ from core.api.errors import (
 from identity import service as identity_service
 from identity.deps import CurrentMember
 from servers import repository as servers_repository
-from servers.calls import (
-    Peer,
-    call_manager,
-    is_forwardable,
-    message_kind,
-    parse_signal,
-)
 from servers.model import Channel
 
 router = APIRouter()
