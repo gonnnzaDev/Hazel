@@ -95,27 +95,26 @@ git push origin main
 
 ```
 recop/
-├── apps/            # cada módulo es autocontenido
-│   ├── common/      #   tipos, errores, reglas de nickname
-│   ├── servers/     #   ciclo de vida del servidor
-│   ├── identity/    #   nicknames y tokens      ← pendiente
-│   ├── channels/    #   salas de chat           ← pendiente
-│   └── chat/        #   Kafka + WebSocket       ← pendiente
-├── core/            # configuración, base de datos, app factory
+├── src/             # toda la lógica vive acá
+│   ├── common/      #   tipos, errores, reglas de nickname (model/view)
+│   ├── servers/     #   ciclo de vida del servidor (model/repository/service/view)
+│   ├── identity/    #   nicknames y tokens (model/repository/service/view)
+│   ├── node/        #   proceso del dueño (repository/service/view)
+│   └── core/        #   configuración, base de datos, app factory
 ├── migrations/      # Alembic
-└── tests/
 ```
 
-Cada app tiene siempre las mismas cuatro capas:
+Cada módulo tiene siempre las mismas capas:
 
 | Archivo | Qué hace |
 |---|---|
-| `models.py` | Los datos y cómo se guardan |
+| `model.py` | Los datos y cómo se guardan |
+| `repository.py` | Consultas y escrituras, sin decisiones de negocio |
 | `schemas.py` | Qué entra y qué sale |
-| `services.py` | Las reglas del negocio |
-| `api/` | Conecta HTTP con el service |
+| `service.py` | Las reglas del negocio |
+| `view.py` | Conecta HTTP con el service |
 
-**Regla importante:** `services.py` nunca importa FastAPI. Así se puede testear sin levantar nada y sirve igual para un futuro cliente mobile.
+**Regla importante:** `service.py` (y `repository.py`) nunca importan FastAPI. Así se puede testear sin levantar nada y sirve igual para un futuro cliente mobile.
 
 Si cambiás un modelo, creá la migración con Alembic y subila en el mismo PR.
 

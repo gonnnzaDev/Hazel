@@ -7,8 +7,8 @@ from typing import Annotated
 
 from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator
 
-from apps.common import nickname as nick
-from apps.identity.roles import Role
+from common import nickname as nick
+from identity.roles import Role
 
 Nickname = Annotated[str, Field(min_length=nick.MIN_LENGTH, max_length=nick.MAX_LENGTH)]
 DisplayName = Annotated[str, Field(min_length=1, max_length=64)]

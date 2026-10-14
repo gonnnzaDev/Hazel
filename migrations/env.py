@@ -14,18 +14,18 @@ from pathlib import Path
 from alembic import context
 from sqlalchemy import engine_from_config, pool
 
-# Repo root so `core` and `apps` are importable.
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+# `src/` so top-level modules (`core`, `servers`, ...) are importable.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from core.config import get_settings
 from core.db.base import Base
 from core.registry import app_registry
 
-# Import registered apps so models land in `Base.metadata` for autogenerate.
+# Import module models so they land in `Base.metadata` for autogenerate.
 for _app_name in app_registry.installed:
-    # Skip apps without `models.py` yet.
+    # Skip modules without `model.py`.
     with suppress(ModuleNotFoundError):
-        __import__(f"apps.{_app_name}.models")
+        __import__(f"{_app_name}.model")
 
 config = context.config
 

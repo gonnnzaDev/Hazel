@@ -119,27 +119,28 @@ decision isn't blocked. But it should be resolved before building on Kafka.
 
 ---
 
-## 5. Structure: Django-style apps
+## 5. Structure: feature modules under `src/`
 
-Each feature lives in `apps/<name>/` with the same layout always:
+Each feature lives in `src/<name>/` with the same layout always:
 
 | Layer | File | Responsibility | Knows HTTP? |
 |---|---|---|---|
-| **Model** | `models.py` | Persistence (async SQLAlchemy) | No |
+| **Model** | `model.py` | Persistence (async SQLAlchemy) | No |
+| **Repository** | `repository.py` | Queries and writes, no policy decisions | No |
 | **Schema** | `schemas.py` | Pydantic contracts | No |
-| **Service** | `services.py` | Business logic | **No** |
-| **View** | `api/` | HTTP bindings | Yes |
+| **Service** | `service.py` | Business logic and orchestration | **No** |
+| **View** | `view.py` | HTTP bindings | Yes |
 
 **Why this separation:**
 
-- The hard rule is that `services.py` imports nothing from FastAPI. Business
+- The hard rule is that `service.py` (and `repository.py`) import nothing from FastAPI. Business
   logic can be tested without bringing the API up and will serve a future
   mobile client the same as a PC.
-- Domain errors (`core/api/errors.py`) are raised from the service and
+- Domain errors (`src/core/api/errors.py`) are raised from the service and
   translated to `application/problem+json` in a global handler. The service
   doesn't pick HTTP codes.
 
-`core/registry.py` declares `INSTALLED_APPS`. It's the only place where an app
+`src/core/registry.py` declares `INSTALLED_APPS`. It's the only place where a module
 is added or removed, and defines the order in which Alembic sees models.
 
 ---
@@ -165,7 +166,7 @@ What should hold from now:
 
 ## 7. Server state
 
-The lifecycle implemented by `apps/servers`:
+The lifecycle implemented by `servers`:
 
 | State | Meaning | Accepts connections? |
 |---|---|---|

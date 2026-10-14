@@ -82,7 +82,7 @@ cmd_revision() {
 
 cmd_lint()      { uv run ruff check .; }
 cmd_format()    { uv run ruff format .; }
-cmd_typecheck() { uv run mypy apps core; }
+cmd_typecheck() { uv run mypy src; }
 cmd_test()      { uv run pytest "$@"; }
 
 cmd_test_integration() {

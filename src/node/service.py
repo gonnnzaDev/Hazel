@@ -8,17 +8,18 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from apps.common.types import RecordId, utcnow
-from apps.identity.roles import Role
-from apps.servers import services as servers_services
-from apps.servers.models import Server
-from apps.servers.schemas import ServerCreate
-from apps.servers.services import get_server, list_servers, normalize_slug, slug_taken
-from apps.servers.states import ServerStatus
+from common.types import RecordId, utcnow
 from core.api.errors import ConflictError, PermissionDeniedError, ValidationDomainError
 from core.config import get_settings
 from core.network import local_addresses
 from core.ports import next_available_port
+from identity.roles import Role
+from node import repository
+from servers import service as servers_service
+from servers.model import Server
+from servers.repository import get_server, normalize_slug, slug_taken
+from servers.schemas import ServerCreate
+from servers.states import ServerStatus
 
 logger = logging.getLogger(__name__)
 
@@ -43,17 +44,6 @@ def supervisor_from(request: Any) -> Any:
 # ──────────────────────────────────────────────────────────────────────────────
 
 
-async def _all_servers(session: Any) -> list[Server]:
-    """All groups registered on this node."""
-    servers, _ = await list_servers(session, limit=1000, offset=0)
-    return servers
-
-
-def _reserved_ports(servers: list[Server]) -> set[int]:
-    """Ports held by registered groups, including inactive ones (port stays reserved)."""
-    return {s.bind_port for s in servers if s.bind_port is not None}
-
-
 async def _allocate_port(
     session: Any,
     supervisor: Any,
@@ -62,7 +52,7 @@ async def _allocate_port(
     ignoring: set[RecordId] | None = None,
 ) -> int | None:
     """Find a free group port, avoiding DB-registered and live-process ports."""
-    servers = await _all_servers(session)
+    servers = await repository.all_servers(session)
     skip = ignoring or set()
     taken = {s.bind_port for s in servers if s.bind_port is not None and s.id not in skip}
     taken |= supervisor.used_ports()
@@ -100,7 +90,7 @@ async def create_group(session: Any, supervisor: Any, payload: ServerCreate) -> 
         )
 
     # Row built by servers.create_server to keep construction rules in one place.
-    server = await servers_services.create_server(session, payload, port=port)
+    server = await servers_service.create_server(session, payload, port=port)
 
     await supervisor.spawn(server.id, port)
     ready = await supervisor.wait_ready(server.id, timeout_seconds=GROUP_READY_TIMEOUT_SECONDS)
