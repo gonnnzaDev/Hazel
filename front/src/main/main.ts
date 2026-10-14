@@ -5,8 +5,8 @@
 // (RECOP_CORS_ORIGINS): una página cargada desde file:// tiene origen `null`,
 // y un nodo que solo acepta orígenes conocidos la rechazaría.
 
-const path = require('node:path');
-const {
+import * as path from 'node:path';
+import {
   app,
   BrowserWindow,
   Menu,
@@ -16,7 +16,9 @@ const {
   net,
   session,
   shell,
-} = require('electron');
+  type IpcMainInvokeEvent,
+} from 'electron';
+import { IPC, type ProxyRequest, type ProxyResponse } from '../shared/bridge';
 
 const DEV = process.argv.includes('--dev');
 const DEFAULT_TIMEOUT_MS = 10_000;
@@ -24,7 +26,7 @@ const DEFAULT_TIMEOUT_MS = 10_000;
 // Permisos que la ventana puede pedir. El micrófono es para los canales de voz.
 const ALLOWED_PERMISSIONS = new Set(['media', 'clipboard-sanitized-write']);
 
-function createWindow() {
+function createWindow(): void {
   const win = new BrowserWindow({
     width: 1240,
     height: 780,
@@ -46,11 +48,11 @@ function createWindow() {
   });
 
   win.once('ready-to-show', () => win.show());
-  win.loadFile(path.join(__dirname, 'renderer', 'index.html'));
+  void win.loadFile(path.join(__dirname, 'renderer', 'index.html'));
 
   // Los links externos se abren en el navegador, nunca dentro de la app.
   win.webContents.setWindowOpenHandler(({ url }) => {
-    if (/^https?:\/\//i.test(url)) shell.openExternal(url);
+    if (/^https?:\/\//i.test(url)) void shell.openExternal(url);
     return { action: 'deny' };
   });
   win.webContents.on('will-navigate', (event) => event.preventDefault());
@@ -58,7 +60,7 @@ function createWindow() {
   if (DEV) win.webContents.openDevTools({ mode: 'detach' });
 }
 
-function isHttpUrl(value) {
+function isHttpUrl(value: string): boolean {
   try {
     const { protocol } = new URL(value);
     return protocol === 'http:' || protocol === 'https:';
@@ -69,10 +71,10 @@ function isHttpUrl(value) {
 
 // Una petición HTTP en nombre de la ventana. Nunca lanza: devuelve el estado y
 // el cuerpo crudo, y la ventana decide qué hacer con un 4xx o con un error de red.
-async function proxyRequest(_event, request) {
-  const { url, method = 'GET', headers = {}, body, timeoutMs = DEFAULT_TIMEOUT_MS } = request ?? {};
+async function proxyRequest(_event: IpcMainInvokeEvent, request: ProxyRequest): Promise<ProxyResponse> {
+  const { url, method = 'GET', headers = {}, body, timeoutMs = DEFAULT_TIMEOUT_MS } = request;
 
-  if (!isHttpUrl(url)) {
+  if (typeof url !== 'string' || !isHttpUrl(url)) {
     return { ok: false, status: 0, error: 'invalid_url' };
   }
 
@@ -84,17 +86,14 @@ async function proxyRequest(_event, request) {
     const text = await response.text();
     return { ok: response.ok, status: response.status, body: text };
   } catch (error) {
-    return {
-      ok: false,
-      status: 0,
-      error: error.name === 'AbortError' ? 'timeout' : 'network',
-    };
+    const aborted = error instanceof Error && error.name === 'AbortError';
+    return { ok: false, status: 0, error: aborted ? 'timeout' : 'network' };
   } finally {
     clearTimeout(timer);
   }
 }
 
-app.whenReady().then(() => {
+void app.whenReady().then(() => {
   if (!DEV && process.platform !== 'darwin') Menu.setApplicationMenu(null);
 
   session.defaultSession.setPermissionRequestHandler((_wc, permission, callback) => {
@@ -102,8 +101,8 @@ app.whenReady().then(() => {
   });
   session.defaultSession.setPermissionCheckHandler((_wc, permission) => ALLOWED_PERMISSIONS.has(permission));
 
-  ipcMain.handle('api:request', proxyRequest);
-  ipcMain.handle('clipboard:write', (_event, text) => {
+  ipcMain.handle(IPC.request, proxyRequest);
+  ipcMain.handle(IPC.copy, (_event, text: unknown) => {
     clipboard.writeText(String(text ?? ''));
   });
 

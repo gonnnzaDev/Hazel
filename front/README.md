@@ -10,7 +10,7 @@ al lado, el chat en el medio y los miembros a la derecha.
 
 ## Arrancarlo
 
-Necesitás [Node.js](https://nodejs.org/) 20 o más nuevo.
+Necesitás [Node.js](https://nodejs.org/) 20 o más nuevo. `npm start` compila el TypeScript y abre la app.
 
 ```bash
 cd front
@@ -46,43 +46,57 @@ a entrar con el mismo nickname y recuperás tu lugar.
 
 ## Cómo está armado
 
-Sin frameworks ni bundler: HTML, CSS y JavaScript plano, para que cualquiera lo
-pueda leer y tocar.
+TypeScript estricto, sin frameworks: el DOM se arma con una función `h()` chica.
+esbuild compila a `dist/` en milisegundos y `tsc` revisa los tipos aparte.
 
 ```
 front/
 ├── assets/                 ícono de la app (SVG y PNG)
+├── build.mjs               compila src/ → dist/ con esbuild
+├── tsconfig.json           tipos de la ventana (DOM, sin Node)
 └── src/
-    ├── main.js             proceso principal: abre la ventana y hace las peticiones HTTP
-    ├── preload.js          el puente entre la ventana y el proceso principal
+    ├── shared/bridge.ts    el contrato entre la ventana y el proceso principal
+    ├── main/
+    │   ├── main.ts         proceso principal: abre la ventana y hace las peticiones HTTP
+    │   ├── preload.ts      el puente entre la ventana y el proceso principal
+    │   └── tsconfig.json   tipos de Node y Electron
     └── renderer/
         ├── index.html
         ├── styles.css      paleta y estilos (claro y oscuro)
-        └── js/
-            ├── util.js     DOM, fechas, normalizar nicknames
-            ├── icons.js    íconos de línea
-            ├── store.js    preferencias y sesiones (una por servidor)
-            ├── api.js      cliente de /api/v1
-            ├── call.js     canales de voz con WebRTC
-            ├── ui.js       modales, menús y avisos
-            ├── views.js    las cuatro columnas
-            └── app.js      estado, acciones y sondeo
+        ├── types.ts        el contrato de la API (copia de los schemas del backend)
+        ├── util.ts         DOM, fechas, normalizar nicknames
+        ├── icons.ts        íconos de línea
+        ├── store.ts        preferencias y sesiones (una por servidor)
+        ├── state.ts        el estado en memoria
+        ├── api.ts          cliente de /api/v1
+        ├── call.ts         canales de voz con WebRTC
+        ├── ui.ts           modales, menús y avisos
+        ├── views.ts        las cuatro columnas
+        └── app.ts          acciones, sondeo y arranque
 ```
+
+| Comando | Qué hace |
+|---|---|
+| `npm start` | Compila y abre la app |
+| `npm run dev` | Igual, con las herramientas de desarrollo abiertas |
+| `npm run build` | Solo compila a `dist/` |
+| `npm run typecheck` | Revisa los tipos de la ventana y del proceso principal |
+
+La ventana y el proceso principal tienen configuraciones de tipos separadas: la
+ventana no puede usar nada de Node (corre aislada) y el chequeo lo hace cumplir.
 
 **Por qué las peticiones salen del proceso principal.** La ventana se carga desde
 un archivo local, y un nodo con `RECOP_CORS_ORIGINS` restringido la rechazaría.
-Pidiendo desde `main.js` el cliente anda igual sin importar cómo configuró CORS
+Pidiendo desde `main.ts` el cliente anda igual sin importar cómo configuró CORS
 cada dueño.
 
 **Por qué funciona también en un navegador.** Si no está el puente de Electron,
-`api.js` usa `fetch` directo. Para probar la interfaz sin Electron:
+`api.ts` usa `fetch` directo. Para probar la interfaz sin Electron:
 
 ```bash
-cd front && python3 -m http.server 5500
-# abrí http://127.0.0.1:5500/src/renderer/index.html
+cd front && npm run build && python3 -m http.server 5500
+# abrí http://127.0.0.1:5500/dist/renderer/index.html
 ```
-
-`npm run dev` abre la app con las herramientas de desarrollo.
 
 ---
 
