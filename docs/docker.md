@@ -6,10 +6,8 @@ without installing Python, PostgreSQL or Kafka by hand.
 ```bash
 git clone https://github.com/gonnnzaDev/recop
 cd recop
-cp .env.example .env
-# generate a real secret
-python3 -c "import secrets; print(secrets.token_urlsafe(32))"
-#   ↑ copy it to RECOP_SECRET_KEY in .env
+./scripts/setup.sh
+# setup.sh creates .env with a generated RECOP_SECRET_KEY
 
 docker compose up
 ```
@@ -113,8 +111,7 @@ If `RECOP_SECRET_KEY` is missing, compose fails with:
 RECOP_SECRET_KEY: set RECOP_SECRET_KEY in your .env
 ```
 
-It's intentional: better not to start than to start with the example secret
-from `.env.example`.
+It's intentional: better not to start than to start without your own secret.
 
 ---
 

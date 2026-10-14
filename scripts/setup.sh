@@ -135,8 +135,6 @@ step "Preparando la configuración"
 if [ -f .env ]; then
     ok ".env ya existe, no lo toco"
 else
-    cp .env.example .env
-
     # El compose falla a propósito si RECOP_SECRET_KEY no está. Generamos una de
     # verdad para que el primer arranque funcione sin pasos extra.
     SECRET="$(python3 -c 'import secrets; print(secrets.token_urlsafe(32))' 2>/dev/null || python -c 'import secrets; print(secrets.token_urlsafe(32))' 2>/dev/null || head -c 32 /dev/urandom | base64)"
@@ -145,12 +143,47 @@ else
         SECRET="$(uv run python -c 'import secrets; print(secrets.token_urlsafe(32))' 2>/dev/null || echo "$SECRET")"
     fi
 
-    # sed -i no es portable entre GNU y BSD (macOS), así que se reescribe el
-    # archivo entero en vez de editarlo en el lugar.
-    awk -v secret="$SECRET" '
-        /^RECOP_SECRET_KEY=/ { print "RECOP_SECRET_KEY=" secret; next }
-        { print }
-    ' .env.example > .env
+    # Defaults espejo de src/core/config.py: lo único que debe ser único por
+    # instalación es el secreto.
+    cat > .env <<EOF
+# Recop — configuración local (generada por setup.sh; NUNCA commitear).
+# Entorno: local | test | prod
+RECOP_ENV=local
+RECOP_DEBUG=true
+# Secreto para firmar sesiones/tokens.
+RECOP_SECRET_KEY=$SECRET
+
+# Solo para docker compose: el nodo en container no las usa, solo el compose.
+RECOP_PUBLISH_HOST=0.0.0.0
+RECOP_PUBLISH_PORT=7272
+
+POSTGRES_USER=recop
+POSTGRES_PASSWORD=recop
+POSTGRES_DB=recop
+POSTGRES_PORT=5432
+
+KAFKA_EXTERNAL_PORT=9092
+
+RECOP_AUTO_MIGRATE=true
+
+RECOP_HOST=0.0.0.0
+RECOP_PORT=7272
+RECOP_ROOT_PATH=
+RECOP_CORS_ORIGINS=*
+
+RECOP_DATABASE_URL=postgresql+asyncpg://recop:recop@localhost:5432/recop
+RECOP_DB_POOL_SIZE=10
+RECOP_DB_MAX_OVERFLOW=20
+RECOP_DB_ECHO=false
+
+RECOP_KAFKA_BOOTSTRAP_SERVERS=localhost:9092
+RECOP_KAFKA_TOPIC_PREFIX=recop
+RECOP_KAFKA_CLIENT_ID=
+RECOP_KAFKA_MAX_POLL_RECORDS=500
+
+RECOP_RATE_LIMIT_MESSAGES_PER_MINUTE=20
+RECOP_MAX_MESSAGE_BYTES=4000
+EOF
 
     chmod 600 .env
     ok ".env creado con un secreto generado"
