@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+"""ID generator w/ uuid7, no autoincrement."""
+
 import uuid
 from datetime import UTC, datetime
 
