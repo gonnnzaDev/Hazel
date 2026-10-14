@@ -16,6 +16,7 @@ from calls.service import (
     message_kind,
     parse_signal,
 )
+from channels.model import Channel
 from common.types import RecordId
 from config.bdd_config.bdd_config import session_scope
 from core.api.deps import SettingsDep
@@ -27,7 +28,6 @@ from core.api.errors import (
 from identity import service as identity_service
 from identity.deps import CurrentMember
 from servers import repository as servers_repository
-from servers.model import Channel
 
 router = APIRouter()
 

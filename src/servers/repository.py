@@ -9,9 +9,11 @@ from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from channels.model import Channel, ChannelKind
 from common.types import RecordId, new_id, utcnow
 from core.api.errors import NotFoundError, ValidationDomainError
-from servers.model import Channel, ChannelKind, Message, Server
+from messages.model import Message
+from servers.model import Server
 from servers.schemas import ChannelCreate, ServerUpdate
 from servers.states import ServerStatus
 
