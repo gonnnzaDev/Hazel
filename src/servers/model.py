@@ -21,10 +21,10 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from apps.common.types import RecordId, new_id, utcnow
-from apps.identity.models import Member
-from apps.servers.states import ServerStatus
+from common.types import RecordId, new_id, utcnow
 from core.db.base import Base
+from identity.model import Member
+from servers.states import ServerStatus
 
 
 def _enum_values(enum_cls: type[StrEnum]) -> list[str]:
@@ -65,7 +65,7 @@ class Server(Base):
         default=ServerStatus.CREATING,
         index=True,
     )
-    """Lifecycle state; see `apps/servers/states.py`."""
+    """Lifecycle state; see `servers/states.py`."""
 
     bind_port: Mapped[int] = mapped_column(Integer, nullable=False)
     """Port, assigned by the node process at creation."""

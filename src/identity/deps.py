@@ -11,9 +11,9 @@ from typing import Annotated
 from fastapi import Depends, Header, Query, WebSocket
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from apps.identity.models import Member
-from apps.identity.services import authenticate
 from core.api.deps import db_session
+from identity.model import Member
+from identity.service import authenticate
 
 
 def bearer_token(header: str | None) -> str:

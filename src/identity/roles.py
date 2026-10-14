@@ -40,5 +40,5 @@ class Role(IntEnum):
             raise ValueError(f"Rol desconocido: {label!r}") from None
 
 
-#: Server must always keep an owner; see services.kick_member.
+#: Server must always keep an owner; see service.kick_member.
 DEFAULT_ROLE = Role.MEMBER

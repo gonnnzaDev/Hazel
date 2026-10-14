@@ -32,7 +32,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["apps", "core"]
+packages = ["src/common", "src/core", "src/identity", "src/node", "src/servers"]
 
 # ──────────────────────────────────────────────────────────────────────────────
 # entrypoints
@@ -55,7 +55,7 @@ filterwarnings = ["error", "ignore::DeprecationWarning"]
 [tool.ruff]
 line-length = 100
 target-version = "py314"
-src = ["apps", "core", "tests"]
+src = ["src"]
 
 [tool.ruff.lint]
 select = [
@@ -84,11 +84,11 @@ ignore = [
 "migrations/**" = ["E501"]
 # Son CLIs: escriben su progreso en stdout para que el operador lo vea.
 # `logging` acá sumaría configuración sin aportar nada.
-"core/wait_for_db.py" = ["T201"]
-"core/cli.py" = ["T201"]
+"src/core/wait_for_db.py" = ["T201"]
+"src/core/cli.py" = ["T201"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["apps", "core"]
+known-first-party = ["common", "core", "identity", "node", "servers"]
 
 # ──────────────────────────────────────────────────────────────────────────────
 # mypy

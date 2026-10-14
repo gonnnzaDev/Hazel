@@ -6,12 +6,13 @@ from typing import Annotated
 
 from fastapi import APIRouter, Path, Query, status
 
-from apps.common.types import RecordId, new_id, utcnow
-from apps.identity import services
-from apps.identity.deps import CurrentMember, RawToken, SessionDep
-from apps.identity.models import Member, MemberToken
-from apps.identity.roles import Role
-from apps.identity.schemas import (
+from common.types import RecordId, new_id, utcnow
+from core.api.errors import ValidationDomainError
+from identity import repository, service
+from identity.deps import CurrentMember, RawToken, SessionDep
+from identity.model import Member, MemberToken
+from identity.roles import Role
+from identity.schemas import (
     JoinRequest,
     JoinResponse,
     MemberListResponse,
@@ -21,8 +22,7 @@ from apps.identity.schemas import (
     ServerSummary,
     TokenResponse,
 )
-from apps.servers import services as server_services
-from core.api.errors import ValidationDomainError
+from servers import repository as servers_repository
 
 router = APIRouter()
 
@@ -64,8 +64,8 @@ def _server_summary(server: object) -> ServerSummary:
 )
 async def join(session: SessionDep, server_id: ServerId, payload: JoinRequest) -> JoinResponse:
     """Join the server; re-joining a taken nickname recovers access. First joiner is owner."""
-    server = await server_services.get_server(session, server_id)
-    member, token, expires_at = await services.join_server(session, server, payload)
+    server = await servers_repository.get_server(session, server_id)
+    member, token, expires_at = await service.join_server(session, server, payload)
 
     return JoinResponse(
         token=token,
@@ -82,8 +82,8 @@ async def join(session: SessionDep, server_id: ServerId, payload: JoinRequest) -
 )
 async def leave(member: CurrentMember, session: SessionDep) -> None:
     """Leave the server and revoke all tokens; ownership passes to oldest member left."""
-    await services.revoke_all_tokens(session, member)
-    await services.leave_server(session, member)
+    await service.revoke_all_tokens(session, member)
+    await service.leave_server(session, member)
 
 
 # ─── Sessions ─────────────────────────────────────────────────────────────────
@@ -92,8 +92,8 @@ async def leave(member: CurrentMember, session: SessionDep) -> None:
 @router.post("/auth/refresh", response_model=TokenResponse, summary="Renovar el token")
 async def refresh(raw: RawToken, session: SessionDep) -> TokenResponse:
     """Issue a new token and revoke the current one."""
-    member = await services.authenticate(session, raw)
-    await services.revoke_token(session, raw)
+    member = await service.authenticate(session, raw)
+    await service.revoke_token(session, raw)
     return await _issue_token(session, member)
 
 
@@ -104,28 +104,28 @@ async def refresh(raw: RawToken, session: SessionDep) -> TokenResponse:
 )
 async def logout(raw: RawToken, session: SessionDep) -> None:
     """Revoke the calling token; other devices stay logged in."""
-    await services.authenticate(session, raw)  # validate before revoking
-    await services.revoke_token(session, raw)
+    await service.authenticate(session, raw)  # validate before revoking
+    await service.revoke_token(session, raw)
 
 
 @router.post("/auth/logout-all", summary="Cerrar sesión en todos los dispositivos")
 async def logout_all(raw: RawToken, session: SessionDep) -> dict[str, object]:
     """Revoke all tokens and issue a fresh one; returns revoked count."""
-    member = await services.authenticate(session, raw)
-    revoked = await services.revoke_all_tokens(session, member)
+    member = await service.authenticate(session, raw)
+    revoked = await service.revoke_all_tokens(session, member)
     fresh = await _issue_token(session, member)
     return {"token": fresh.token, "expires_at": fresh.expires_at, "revoked_sessions": revoked}
 
 
 async def _issue_token(session: SessionDep, member: Member) -> TokenResponse:
     """Issue a new token for a member."""
-    raw, token_hash = services.generate_token()
+    raw, token_hash = service.generate_token()
     token = MemberToken(
         id=new_id(),
         member_id=member.id,
         server_id=member.server_id,
         token_hash=token_hash,
-        expires_at=utcnow() + services.DEFAULT_TOKEN_TTL,
+        expires_at=utcnow() + service.DEFAULT_TOKEN_TTL,
     )
     session.add(token)
     await session.flush()
@@ -138,7 +138,7 @@ async def _issue_token(session: SessionDep, member: Member) -> TokenResponse:
 @router.get("/me", response_model=MeResponse, summary="Quién soy")
 async def me(member: CurrentMember, session: SessionDep) -> MeResponse:
     """Caller identity within this token's server; tokens are per-server."""
-    server = await server_services.get_server(session, member.server_id)
+    server = await servers_repository.get_server(session, member.server_id)
     return MeResponse(member=_member_read(member), server=_server_summary(server))
 
 
@@ -162,8 +162,8 @@ async def list_members(
     session: SessionDep, server_id: ServerId, limit: QueryLimit = 50, offset: QueryOffset = 0
 ) -> MemberListResponse:
     """List server members ordered by nickname."""
-    await server_services.get_server(session, server_id)
-    members, total = await services.list_members(session, server_id, limit=limit, offset=offset)
+    await servers_repository.get_server(session, server_id)
+    members, total = await repository.list_members(session, server_id, limit=limit, offset=offset)
     return MemberListResponse(
         items=[_member_read(m) for m in members], total=total, limit=limit, offset=offset
     )
@@ -176,8 +176,8 @@ async def list_members(
 )
 async def get_member(session: SessionDep, server_id: ServerId, nickname: MemberNick) -> MemberRead:
     """Get a member by nickname; nicknames are per-server."""
-    await server_services.get_server(session, server_id)
-    member = await services.get_member_by_nickname(session, server_id, nickname)
+    await servers_repository.get_server(session, server_id)
+    member = await repository.get_member_by_nickname(session, server_id, nickname)
     return _member_read(member)
 
 
@@ -190,8 +190,8 @@ async def kick_member(
     session: SessionDep, server_id: ServerId, nickname: MemberNick, actor: CurrentMember
 ) -> None:
     """Kick a member; requires admin and strictly higher role."""
-    target = await services.get_member_by_nickname(session, server_id, nickname)
-    await services.kick_member(session, actor, target)
+    target = await repository.get_member_by_nickname(session, server_id, nickname)
+    await service.kick_member(session, actor, target)
 
 
 @router.put(
@@ -208,8 +208,8 @@ async def set_member_role(
 ) -> MemberRead:
     """Change a member's role via ?role=member|admin; owner role is immutable."""
     new_role = _parse_role(role)
-    target = await services.get_member_by_nickname(session, server_id, nickname)
-    return _member_read(await services.set_role(session, actor, target, new_role))
+    target = await repository.get_member_by_nickname(session, server_id, nickname)
+    return _member_read(await service.set_role(session, actor, target, new_role))
 
 
 def _parse_role(label: str) -> Role:
