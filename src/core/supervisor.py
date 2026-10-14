@@ -211,7 +211,7 @@ class GroupSupervisor:
 
         def _check() -> bool:
             try:
-                with urllib.request.urlopen(url, timeout=1) as response: 
+                with urllib.request.urlopen(url, timeout=1) as response:  # noqa: S310
                     return bool(response.status == 200)
             except (urllib.error.URLError, OSError, ValueError):
                 return False

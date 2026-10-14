@@ -3,14 +3,6 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime
 
-"""
-
-ID generator w/ uuid7 
-
-NO AutoIncremental
-
-"""
-
 RecordId = uuid.UUID
 def new_id() -> RecordId:
     return uuid.uuid7()

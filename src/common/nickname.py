@@ -1,8 +1,9 @@
 from __future__ import annotations
-from core.api.errors import ValidationDomainError
 
 import re
 import unicodedata
+
+from core.api.errors import ValidationDomainError
 
 NICKNAME_PATTERN = re.compile(r"^[a-z0-9][a-z0-9._-]*$")
 
@@ -12,22 +13,21 @@ MAX_LENGTH = 32
 RESERVED = frozenset(
     {
         "admin",
+        "administrador",
         "everyone",
+        "todos",
         "here",
+        "aqui",
         "hazel",
         "system",
+        "sistema",
         "root",
         "null",
         "none",
         "support",
+        "soporte",
     }
 )
-
-"""
-
-Normalize + valid + reserved names
-
-"""
 
 
 def normalize(raw: str) -> str:
