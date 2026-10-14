@@ -5,7 +5,7 @@ import asyncio
 import logging
 import sys
 
-from core.config import Settings, get_settings
+from config.conf import Settings, get_settings
 
 
 def _setup_logging(settings: Settings, role: str) -> None:

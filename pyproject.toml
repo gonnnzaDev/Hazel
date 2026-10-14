@@ -32,7 +32,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/common", "src/core", "src/identity", "src/node", "src/servers"]
+packages = ["src/common", "src/config", "src/core", "src/identity", "src/node", "src/servers"]
 
 # ──────────────────────────────────────────────────────────────────────────────
 # entrypoints
@@ -88,7 +88,7 @@ ignore = [
 "src/core/cli.py" = ["T201"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["common", "core", "identity", "node", "servers"]
+known-first-party = ["common", "config", "core", "identity", "node", "servers"]
 
 # ──────────────────────────────────────────────────────────────────────────────
 # mypy
