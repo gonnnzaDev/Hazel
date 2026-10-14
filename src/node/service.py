@@ -4,8 +4,8 @@ import logging
 from typing import Any
 
 from common.types import RecordId, utcnow
+from config.conf import get_settings
 from core.api.errors import ConflictError, PermissionDeniedError, ValidationDomainError
-from core.config import get_settings
 from core.network import local_addresses
 from core.ports import next_available_port
 from identity.roles import Role

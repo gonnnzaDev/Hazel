@@ -8,10 +8,10 @@ from typing import TYPE_CHECKING
 from fastapi import APIRouter, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from config.conf import Settings, get_settings
 from core import __version__
 from core.api.errors import register_exception_handlers
 from core.api.health import router as health_router
-from core.config import Settings, get_settings
 from core.registry import app_registry
 
 if TYPE_CHECKING:

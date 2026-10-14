@@ -6,7 +6,7 @@ from typing import Annotated
 from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from core.config import Settings, get_settings
+from config.conf import Settings, get_settings
 from core.db.session import get_session_maker
 
 
