@@ -1,6 +1,6 @@
 # Recop — atajos de desarrollo
 .DEFAULT_GOAL := help
-.PHONY: help install setup up down logs stack-up stack-down stack-logs api front migrate revision test test-integration lint format typecheck check clean
+.PHONY: help install setup up down logs stack-up stack-down stack-logs api front mobile migrate revision test test-integration lint format typecheck check clean
 
 help: ## Mostrar esta ayuda
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
@@ -45,6 +45,10 @@ api: ## Levantar la API con recarga
 front: ## Abrir el cliente de escritorio (Electron)
 	@test -d front/node_modules || (cd front && npm install)
 	cd front && npm start
+
+mobile: ## Levantar la app móvil (Expo): escaneá el QR con Expo Go
+	@test -d mobile/node_modules || (cd mobile && npm install)
+	cd mobile && npx expo start
 
 migrate: ## Aplicar migraciones
 	uv run alembic upgrade head
