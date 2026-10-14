@@ -1,4 +1,4 @@
-# Recop API
+# Hazel API
 
 Full system contract. This document is the reference: what is here is what the
 API must expose, before the implementation exists.
@@ -29,7 +29,7 @@ Before endpoints, the four things to be clear about.
 
 ### Node
 
-The Recop process running on a PC. It is **the unit someone installs and
+The Hazel process running on a PC. It is **the unit someone installs and
 brings up**. A node:
 
 - listens on **a single port**
@@ -210,7 +210,7 @@ Centralized in `src/common/nickname.py`:
 - 2 to 32 characters
 - Only `a-z`, `0-9`, `.`, `_`, `-`
 - Normalized: `"  José  Luis "` → `"jose_luis"`
-- Reserved: `admin`, `everyone`, `here`, `sistema`, `recop`, `root`, ...
+- Reserved: `admin`, `everyone`, `here`, `sistema`, `hazel`, `root`, ...
 
 A nickname can be valid on one server and taken on another. That's not a
 conflict: it's the point.
@@ -419,7 +419,7 @@ All errors use `application/problem+json`:
 
 ```json
 {
-  "type": "https://recop.dev/errors/server_inactive",
+  "type": "https://hazel.dev/errors/server_inactive",
   "title": "Server inactive",
   "status": 409,
   "code": "server_inactive",

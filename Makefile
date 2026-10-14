@@ -1,4 +1,4 @@
-# Recop — dev shortcuts
+# Hazel — dev shortcuts
 .DEFAULT_GOAL := help
 .PHONY: help install setup up down logs stack-up stack-down stack-logs api migrate revision test test-integration lint format typecheck check clean
 
@@ -16,7 +16,7 @@ up: ## Start PostgreSQL and Kafka (dev compose)
 	docker compose -f docker-compose.dev.yml up -d
 	@echo "Waiting for the services to be ready..."
 	@until docker compose -f docker-compose.dev.yml exec -T postgres \
-		pg_isready -U $${POSTGRES_USER:-recop} >/dev/null 2>&1; do sleep 1; done
+		pg_isready -U $${POSTGRES_USER:-hazel} >/dev/null 2>&1; do sleep 1; done
 	@echo "Ready."
 
 down: ## Stop the services
@@ -47,13 +47,13 @@ migrate: ## Apply migrations
 revision: ## Create a migration: make revision m="message"
 	uv run alembic revision --autogenerate -m "$(m)"
 
-test: ## Run the tests (integration ones are skipped without RECOP_TEST_DATABASE_URL)
+test: ## Run the tests (integration ones are skipped without HAZEL_TEST_DATABASE_URL)
 	uv run pytest
 
 test-integration: ## Run the tests against a real database (requires PostgreSQL)
-	@if [ -z "$(RECOP_TEST_DATABASE_URL)" ]; then \
-		echo "Missing RECOP_TEST_DATABASE_URL. E.g.:"; \
-		echo "  make test-integration RECOP_TEST_DATABASE_URL=postgresql+asyncpg://recop:recop@localhost:5432/recop_test"; \
+	@if [ -z "$(HAZEL_TEST_DATABASE_URL)" ]; then \
+		echo "Missing HAZEL_TEST_DATABASE_URL. E.g.:"; \
+		echo "  make test-integration HAZEL_TEST_DATABASE_URL=postgresql+asyncpg://hazel:hazel@localhost:5432/hazel_test"; \
 		exit 1; \
 	fi
 	uv run pytest

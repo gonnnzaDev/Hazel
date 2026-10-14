@@ -1,4 +1,4 @@
-# Recop — dev dependencies.
+# Hazel — dev dependencies.
 #
 # Only PostgreSQL and Kafka. The API runs on your machine with `make api`, so you
 # can edit code and reload without rebuilding the image.
@@ -11,25 +11,25 @@
 services:
   postgres:
     image: postgres:17-alpine@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24
-    container_name: recop-postgres-dev
+    container_name: hazel-postgres-dev
     restart: unless-stopped
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-recop}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-recop}
-      POSTGRES_DB: ${POSTGRES_DB:-recop}
+      POSTGRES_USER: ${POSTGRES_USER:-hazel}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-hazel}
+      POSTGRES_DB: ${POSTGRES_DB:-hazel}
     ports:
       - "${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-recop} -d ${POSTGRES_DB:-recop}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-hazel} -d ${POSTGRES_DB:-hazel}"]
       interval: 5s
       timeout: 5s
       retries: 10
 
   kafka:
     image: apache/kafka:3.9.1@sha256:4ceccc577f03f51f6af8dbfda55194d0d892f4fa7913ffbded567ce3895622ed
-    container_name: recop-kafka-dev
+    container_name: hazel-kafka-dev
     restart: unless-stopped
     ports:
       - "${KAFKA_EXTERNAL_PORT:-9092}:9092"

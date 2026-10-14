@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=REPO_ROOT / ".env",
         env_file_encoding="utf-8",
-        env_prefix="RECOP_",
+        env_prefix="HAZEL_",
         extra="ignore",
     )
 
@@ -44,13 +44,13 @@ class Settings(BaseSettings):
     root_path: str = ""
     cors_origins: CsvList = Field(default_factory=lambda: ["*"])
 
-    database_url: str = "postgresql+asyncpg://recop:recop@localhost:5432/recop"
+    database_url: str = "postgresql+asyncpg://hazel:hazel@localhost:5432/hazel"
     db_pool_size: int = Field(default=10, ge=1)
     db_max_overflow: int = Field(default=20, ge=0)
     db_echo: bool = False
 
     kafka_bootstrap_servers: CsvList = Field(default_factory=lambda: ["localhost:9092"])
-    kafka_topic_prefix: str = "recop"
+    kafka_topic_prefix: str = "hazel"
     kafka_client_id: str = ""
     kafka_max_poll_records: int = Field(default=500, ge=1)
 
@@ -73,7 +73,7 @@ class Settings(BaseSettings):
             "ICE (STUN/TURN) servers for WebRTC, comma-separated. "
             "Empty by default: not needed on the same network or with a "
             "direct IP. To traverse NAT, configure your own STUN/TURN. "
-            "Recop does not depend on any external one to work."
+            "Hazel does not depend on any external one to work."
         ),
     )
 
@@ -100,7 +100,7 @@ class Settings(BaseSettings):
     @computed_field  # type: ignore[prop-decorator]
     @property
     def kafka_client_id_resolved(self) -> str:
-        return self.kafka_client_id or f"recop-{self.env}"
+        return self.kafka_client_id or f"hazel-{self.env}"
 
     def kafka_topic(self, name: str) -> str:
         return f"{self.kafka_topic_prefix}.{name}"

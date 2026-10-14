@@ -4,10 +4,10 @@ The idea is that anyone cloning the repo gets **exactly the same environment**,
 without installing Python, PostgreSQL or Kafka by hand.
 
 ```bash
-git clone https://github.com/gonnnzaDev/recop
-cd recop
+git clone https://github.com/gonnnzaDev/hazel
+cd hazel
 ./scripts/setup.sh
-# setup.sh creates .env with a generated RECOP_SECRET_KEY
+# setup.sh creates .env with a generated HAZEL_SECRET_KEY
 
 docker compose up
 ```
@@ -51,10 +51,10 @@ image on each machine:
 To build them all at once:
 
 ```bash
-docker buildx create --use --name recap   # only once
+docker buildx create --use --name hazel   # only once
 docker buildx build \
   --platform linux/amd64,linux/arm64,linux/arm/v7 \
-  -t gonnnzadev/recop:0.1.0 \
+  -t gonnnzadev/hazel:0.1.0 \
   --push .
 ```
 
@@ -69,7 +69,7 @@ docker buildx build \
 copies only the result. The final image carries neither the compiler, nor `uv`,
 nor source code no longer used.
 
-**Unprivileged user.** Runs as `recap` (uid 1001). A node is a process living
+**Unprivileged user.** Runs as `hazel` (uid 1001). A node is a process living
 on someone's PC; it shouldn't be able to write to `/usr` or create users.
 
 **`tini` as PID 1.** Without it, `SIGTERM` never reaches Uvicorn and every
@@ -82,12 +82,12 @@ same time, and PostgreSQL takes a few seconds to accept connections.
 
 ```
 ==> waiting for the database (timeout: 60s)
-    database ready (postgres:5432/recop)
+    database ready (postgres:5432/hazel)
 ==> applying migrations
 ==> starting the node
 ```
 
-If you run several replicas of the same node, set `RECOP_AUTO_MIGRATE=false` on
+If you run several replicas of the same node, set `HAZEL_AUTO_MIGRATE=false` on
 all but one, or they'll step on each other.
 
 ---
@@ -98,17 +98,17 @@ Done via environment variables, not files. Compose reads `.env`.
 
 | Variable | What for | Default |
 |---|---|---|
-| `RECOP_SECRET_KEY` | Signs tokens. **Required in production.** | — |
-| `RECOP_PUBLISH_HOST` | Interface where the port is published | `0.0.0.0` |
-| `RECOP_PUBLISH_PORT` | Published port on your machine | `7272` |
-| `RECOP_AUTO_MIGRATE` | Apply migrations on start | `true` |
-| `RECOP_ENV` | `local` \| `test` \| `prod` | `prod` in the image |
-| `RECOP_DATABASE_URL` | PostgreSQL connection | points to `postgres:5432` |
+| `HAZEL_SECRET_KEY` | Signs tokens. **Required in production.** | — |
+| `HAZEL_PUBLISH_HOST` | Interface where the port is published | `0.0.0.0` |
+| `HAZEL_PUBLISH_PORT` | Published port on your machine | `7272` |
+| `HAZEL_AUTO_MIGRATE` | Apply migrations on start | `true` |
+| `HAZEL_ENV` | `local` \| `test` \| `prod` | `prod` in the image |
+| `HAZEL_DATABASE_URL` | PostgreSQL connection | points to `postgres:5432` |
 
-If `RECOP_SECRET_KEY` is missing, compose fails with:
+If `HAZEL_SECRET_KEY` is missing, compose fails with:
 
 ```
-RECOP_SECRET_KEY: set RECOP_SECRET_KEY in your .env
+HAZEL_SECRET_KEY: set HAZEL_SECRET_KEY in your .env
 ```
 
 It's intentional: better not to start than to start without your own secret.
@@ -124,7 +124,7 @@ docker compose ps                 # status and health
 docker compose exec api python -m core.cli --help
 docker compose down               # stop, keep data
 docker compose down -v            # stop and DELETE volumes
-docker compose exec postgres psql -U recap -d recop   # enter the DB
+docker compose exec postgres psql -U hazel -d hazel   # enter the DB
 ```
 
 Data lives in `postgres_data` and `kafka_data` volumes. `down` keeps them;
@@ -137,7 +137,7 @@ Data lives in `postgres_data` and `kafka_data` volumes. `down` keeps them;
 **Port already in use**
 
 ```bash
-RECOP_PUBLISH_PORT=8080 docker compose up
+HAZEL_PUBLISH_PORT=8080 docker compose up
 ```
 
 **`permission denied` mounting volumes**
@@ -153,9 +153,9 @@ Almost always it can't connect to the DB. Look at:
 docker compose logs api
 ```
 
-If it says `database didn't respond`, the problem is in `postgres`, not Recop.
+If it says `database didn't respond`, the problem is in `postgres`, not Hazel.
 
 **Nobody can join me from the local network**
 
-`RECOP_PUBLISH_HOST` must be `0.0.0.0`, not `127.0.0.1`. And the system firewall
+`HAZEL_PUBLISH_HOST` must be `0.0.0.0`, not `127.0.0.1`. And the system firewall
 must let the port through.

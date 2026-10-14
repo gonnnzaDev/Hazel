@@ -14,7 +14,7 @@ router = APIRouter(prefix="/health", tags=["health"])
 async def health(settings: SettingsDep) -> dict[str, object]:
     return {
         "status": "ok",
-        "service": "recop-node",
+        "service": "hazel-node",
         "version": "0.1.0",
         "environment": settings.env,
         "timestamp": datetime.now(UTC).isoformat(),

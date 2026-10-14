@@ -7,8 +7,8 @@ import sys
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
+from config.bdd_config.bdd_config import dispose_engine, get_engine
 from config.conf import get_settings
-from core.db.session import dispose_engine, get_engine
 
 
 async def wait_for_db(timeout_seconds: float, interval: float = 1.0) -> bool:

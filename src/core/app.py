@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 
 def _base_app(settings: Settings, *, lifespan: object | None) -> FastAPI:
     app = FastAPI(
-        title="Recop",
+        title="Hazel",
         summary="Self-hosted chat. Your server, your machine, your port.",
         version=__version__,
         root_path=settings.root_path,
@@ -55,7 +55,7 @@ def create_node_app(settings: Settings | None = None) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-        from core.db.session import dispose_engine
+        from config.bdd_config.bdd_config import dispose_engine
 
         supervisor: GroupSupervisor | None = getattr(app.state, "supervisor", None)
         try:
@@ -75,7 +75,7 @@ def create_group_app(*, server_id: str, settings: Settings | None = None) -> Fas
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-        from core.db.session import dispose_engine
+        from config.bdd_config.bdd_config import dispose_engine
 
         app.state.server_id = server_id
         try:
@@ -93,7 +93,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-        from core.db.session import dispose_engine, session_scope
+        from config.bdd_config.bdd_config import dispose_engine, session_scope
         from servers.repository import mark_all_inactive
 
         try:
