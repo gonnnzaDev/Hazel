@@ -32,7 +32,6 @@ export interface Server {
   slug: string;
   description: string | null;
   status: ServerStatus;
-  bind_port: number;
   max_members: number;
   last_heartbeat_at: string | null;
   created_at: string;
@@ -51,6 +50,7 @@ export interface ServerCreate {
   name: string;
   slug: string;
   owner_nickname: string;
+  description?: string;
   channels: ChannelCreate[];
 }
 
@@ -87,13 +87,6 @@ export interface MeResponse {
   server: ServerSummary;
 }
 
-export interface Message {
-  id: string;
-  author_nickname: string;
-  content: string;
-  created_at: string;
-}
-
 export interface NodeInfo {
   service: string;
   version: string;
@@ -118,6 +111,14 @@ export interface NodeAddress {
   recommended: string | null;
 }
 
+export interface ServerAddress {
+  server_id: string;
+  slug: string;
+  server_name: string;
+  is_active: boolean;
+  node: NodeAddress;
+}
+
 export interface CallParticipant {
   member_id: string;
   nickname: string;
@@ -135,6 +136,7 @@ export interface CallParticipants {
 
 // ─── Cliente ──────────────────────────────────────────────────────────────────
 
+<<<<<<< HEAD:front/src/renderer/types.ts
 export type Theme = 'system' | 'light' | 'dark';
 
 export interface Settings {
@@ -146,9 +148,13 @@ export interface Settings {
 }
 
 // En Hazel no hay cuenta global: cada servidor al que entrás te da un token
+=======
+// En Hazel no hay cuenta global: cada servidor al que entrás te da un token
+>>>>>>> pr-19:front/src/renderer/lib/types.ts
 // propio. Una sesión es eso: dónde está el servidor, con qué nickname entraste
 // y el token.
 export interface Session {
+  /** `baseUrl|serverId`: identifica la sesión aunque dos nodos usen el mismo id. */
   key: string;
   baseUrl: string;
   serverId: string;
@@ -158,4 +164,37 @@ export interface Session {
   expiresAt: string | null;
   member: Member;
   lastChannelId: string | null;
+  /** El token dejó de valer: hay que volver a entrar con el nickname. */
+  expired?: boolean;
+}
+
+export type Presence = 'online' | 'idle' | 'dnd';
+
+/**
+ * Un mensaje de chat. Viaja entre las apps de los miembros (ver net/bus.ts):
+ * el backend todavía no guarda mensajes, así que cada app guarda el historial
+ * que vio y se lo pasa a quien se conecta.
+ */
+export interface ChatMessage {
+  id: string;
+  /** Id del canal de texto, o `dm:<idA>:<idB>` para un mensaje directo. */
+  channelId: string;
+  authorId: string;
+  nick: string;
+  name: string;
+  content: string;
+  createdAt: number;
+  /** Cambia con cada reacción o borrado: gana la versión más nueva. */
+  updatedAt: number;
+  replyTo?: string | null;
+  reactions: Record<string, string[]>;
+  deleted?: boolean;
+}
+
+/** Un mensaje que solo ve quien lo generó (salida de /help, avisos). */
+export interface LocalNotice {
+  id: string;
+  channelId: string;
+  content: string;
+  createdAt: number;
 }

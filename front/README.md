@@ -1,8 +1,20 @@
+<<<<<<< HEAD
 # Hazel — cliente de escritorio
 
 La app para usar Hazel sin `curl`. Hecha con [Electron](https://www.electronjs.org/),
 con una interfaz que se parece a Discord: tus servidores a la izquierda, los canales
 al lado, el chat en el medio y los miembros a la derecha.
+=======
+# Hazel — app de escritorio
+
+La app para usar Hazel sin `curl`. Hecha con [Electron](https://www.electronjs.org/),
+React y TypeScript, con estética de tiling WM tipo Hyprland: fondo oscuro con
+grilla y partículas, paneles de vidrio en mosaico, acentos neón, una barra estilo
+Waybar arriba y un dock de servidores a la izquierda.
+
+Todo lo que muestra es real: habla con tu nodo y con los nodos de otras personas.
+No hay datos de prueba.
+>>>>>>> pr-19
 
 <p align="center"><img src="assets/icon.png" width="96" alt="Hazel" /></p>
 
@@ -10,7 +22,7 @@ al lado, el chat en el medio y los miembros a la derecha.
 
 ## Arrancarlo
 
-Necesitás [Node.js](https://nodejs.org/) 20 o más nuevo. `npm start` compila el TypeScript y abre la app.
+Necesitás [Node.js](https://nodejs.org/) 20.19 o más nuevo. `npm start` compila y abre la app.
 
 ```bash
 cd front
@@ -22,55 +34,74 @@ Si vas a crear servidores, antes levantá tu nodo (`make up` y
 `uv run python -m core node`, o `docker compose up`). Para entrar al servidor
 de un amigo no hace falta: alcanza con la dirección que te pasó.
 
+En Linux, si la app no abre y se queja de `chrome-sandbox`, arrancala con
+`npm run build && npx electron . --no-sandbox`.
+
 ---
 
-## Cómo se usa
+## Qué tiene
 
-| Quiero… | Dónde |
+| Parte | Qué hace |
 |---|---|
-| Crear mi servidor | Logo de arriba a la izquierda → **Crear servidor**, o el **+** |
-| Pasarle la dirección a mis amigos | El ícono de copiar al lado de la dirección, o **Invitar gente** dentro del servidor |
-| Entrar al servidor de alguien | **+** → **Unirme a un servidor**, y pegás `ip:puerto/nombre` |
-| Encender o apagar un servidor | **Mi nodo** → **Encender** / **Apagar**. Apagar no borra nada |
-| Hablar por voz | Clic en un canal con el ícono de parlante |
-| Cambiar cómo me ven | Clic en tu nombre, abajo a la izquierda |
-| Modo oscuro | El engranaje → **Configuración** → Tema |
+| Arranque | Log estilo terminal con los pasos reales: nodo, servidores, sesiones, chat y micrófono |
+| Waybar | Un espacio de trabajo por servidor (Ctrl+1…9; Ctrl+0 vuelve a tu nodo), reloj, llamada en curso, gente conectada por P2P, latencia medida contra el nodo, CPU y batería de la compu, menciones |
+| Mi nodo | Crear, encender, apagar y borrar tus servidores; copiar la dirección para invitar; entrar con un nickname; widgets de latencia y de CPU y memoria |
+| Dock | Tus servidores con indicador neón, no leídos, menciones y si estás en una llamada |
+| Servidor | Banner, canales de texto y de voz colapsables, quién está en cada canal de voz, mensajes directos y tu barra (estado, micrófono, auriculares) |
+| Chat | Markdown (negrita, cursiva, tachado, `código`, bloques de código, citas, links), menciones `@nickname` resaltadas, emojis `:nombre:`, respuestas, reacciones, borrar lo propio, "escribiendo…" y autocompletado de `/`, `:` y `@` |
+| Comandos | `/help`, `/ping`, `/shrug`, `/tableflip`, `/unflip`, `/me`, `/status`, `/nick`, `/clear` |
+| Miembros | Por rol (dueño, admins, miembros), los conectados primero, con su estado. El dueño puede hacer admin o echar gente |
+| Voz | Una tarjeta por persona con la onda de su audio real, un anillo cuando habla, su micrófono y la latencia con cada uno. Silenciar (Ctrl+Shift+M), ensordecer y salir |
+| Paleta | Ctrl+K o el botón flotante: búsqueda difusa de acciones, servidores, canales y gente |
+| Avisos | Notificaciones del sistema cuando te mencionan o te escriben por privado y no estás mirando |
 
-No hay cuentas: entrás con un nickname. Si escribís "Ana Paula", tu nickname queda
-`@ana_paula` y en el chat te ven como "Ana Paula". Si se te vence la sesión, volvés
-a entrar con el mismo nickname y recuperás tu lugar.
+No hay cuentas: entrás con un nickname. Si se te vence la sesión, volvés a entrar
+con el mismo nickname y recuperás tu lugar.
+
+---
+
+## Cómo viaja el chat
+
+El backend todavía no guarda mensajes, pero sí presenta a la gente: su WebSocket
+de llamadas (`/servers/{id}/channels/{id}/call`) acepta cualquier canal. La app
+entra a la "sala" del canal de texto por defecto de cada servidor y abre un canal
+de datos WebRTC con cada persona conectada. Por ahí van los mensajes de todos los
+canales, las reacciones, quién está escribiendo, el estado de cada uno y los
+mensajes directos (que van solo a la otra persona).
+
+Cada app guarda el historial que vio, en esa compu. Cuando dos apps se conectan,
+cada una le manda a la otra lo que le falta. Así, quien llega ve lo que se habló
+mientras no estaba, **siempre que alguien que lo vio esté conectado**. Si no hay
+nadie más, el mensaje queda en tu app y se entrega cuando alguien entre mientras
+vos estés.
+
+El día que el backend guarde mensajes, el único archivo a cambiar es
+`src/renderer/net/bus.ts`.
 
 ---
 
 ## Cómo está armado
 
-TypeScript estricto, sin frameworks: el DOM se arma con una función `h()` chica.
-esbuild compila a `dist/` en milisegundos y `tsc` revisa los tipos aparte.
-
 ```
 front/
-├── assets/                 ícono de la app (SVG y PNG)
-├── build.mjs               compila src/ → dist/ con esbuild
-├── tsconfig.json           tipos de la ventana (DOM, sin Node)
+├── assets/                  ícono de la app (SVG y PNG)
+├── build.mjs                compila src/ → dist/ con esbuild (y copia las tipografías)
+├── tsconfig.json            tipos de la ventana (DOM, sin Node)
 └── src/
-    ├── shared/bridge.ts    el contrato entre la ventana y el proceso principal
+    ├── shared/bridge.ts     el contrato entre la ventana y el proceso principal
     ├── main/
-    │   ├── main.ts         proceso principal: abre la ventana y hace las peticiones HTTP
-    │   ├── preload.ts      el puente entre la ventana y el proceso principal
-    │   └── tsconfig.json   tipos de Node y Electron
+    │   ├── main.ts          proceso principal: ventana, peticiones HTTP y uso de CPU
+    │   ├── preload.ts       el puente entre la ventana y el proceso principal
+    │   └── tsconfig.json    tipos de Node y Electron
     └── renderer/
         ├── index.html
-        ├── styles.css      paleta y estilos (claro y oscuro)
-        ├── types.ts        el contrato de la API (copia de los schemas del backend)
-        ├── util.ts         DOM, fechas, normalizar nicknames
-        ├── icons.ts        íconos de línea
-        ├── store.ts        preferencias y sesiones (una por servidor)
-        ├── state.ts        el estado en memoria
-        ├── api.ts          cliente de /api/v1
-        ├── call.ts         canales de voz con WebRTC
-        ├── ui.ts           modales, menús y avisos
-        ├── views.ts        las cuatro columnas
-        └── app.ts          acciones, sondeo y arranque
+        ├── main.tsx         entrada de la ventana
+        ├── styles.css       el tema completo
+        ├── actions.ts       todo lo que la app hace: nodo, servidores, sesiones, chat, voz
+        ├── lib/             cliente de /api/v1, tipos, markdown, búsqueda difusa, colores
+        ├── net/             mesh.ts (sala WebRTC), bus.ts (chat P2P), voice.ts (voz)
+        ├── store/           estado con zustand: settings, sessions, app, chat, voice
+        └── components/      Waybar, Dock, Sidebar, Chat, Members, Voice, Wofi, Modals…
 ```
 
 | Comando | Qué hace |
@@ -88,25 +119,21 @@ un archivo local, y un nodo con `HAZEL_CORS_ORIGINS` restringido la rechazaría.
 Pidiendo desde `main.ts` el cliente anda igual sin importar cómo configuró CORS
 cada dueño.
 
-**Por qué funciona también en un navegador.** Si no está el puente de Electron,
-`api.ts` usa `fetch` directo. Para probar la interfaz sin Electron:
-
-```bash
-cd front && npm run build && python3 -m http.server 5500
-# abrí http://127.0.0.1:5500/dist/renderer/index.html
-```
+**Por qué todo va por la dirección del nodo.** El nodo sirve la API completa,
+también la de cada servidor, así que la app no necesita saber en qué puerto
+corre cada proceso de grupo. La dirección para invitar es `ip-del-nodo:puerto/slug`.
 
 ---
 
 ## Lo que todavía no hace
 
-- **Mensajes en tiempo real.** El backend todavía no tiene el WebSocket de chat
-  (`/api/v1/ws`), así que el cliente pide los mensajes nuevos cada 2,5 segundos.
-  Cuando exista, se cambia el sondeo por los eventos sin tocar las vistas.
+- **Historial en el servidor.** Mientras el backend no guarde mensajes, lo que se
+  habló solo lo puede pasar alguien que lo vio y está conectado.
 - **Crear o editar canales.** La API todavía no tiene esos endpoints: los canales
-  salen de cómo se creó el servidor (`general` y, si querés, `charla` de voz).
+  salen de cómo se creó el servidor (`general` y `Charla` de voz).
 - **Video.** Los canales de voz son solo audio.
 - **Instaladores.** Por ahora se corre con `npm start`. Empaquetarlo para Windows,
   macOS y Linux (por ejemplo con electron-builder) es el siguiente paso.
 
-Los íconos están basados en [Feather](https://feathericons.com/) (MIT).
+Las tipografías son [JetBrains Mono](https://www.jetbrains.com/lp/mono/) e
+[Inter](https://rsms.me/inter/) (OFL) y los íconos, [Feather](https://feathericons.com/) (MIT).

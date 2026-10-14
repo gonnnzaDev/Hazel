@@ -1,32 +1,31 @@
 // Cliente HTTP de la API de Hazel (`/api/v1`).
 //
-// Hay dos tipos de proceso del otro lado, con la misma API:
-//
-// - el NODO del dueño (por defecto http://127.0.0.1:7272): crea, enciende,
-//   apaga y borra servidores;
-// - cada SERVIDOR (grupo) en su propio puerto: ahí se entra con un nickname,
-//   se chatea y se habla por voz.
+// Todo pasa por la dirección del NODO (por defecto http://127.0.0.1:7272): el
+// nodo sirve la API completa, la del dueño (crear, encender, apagar y borrar
+// servidores) y la de cada servidor (entrar con un nickname, miembros, roles y
+// la señalización de las llamadas). Para entrar al servidor de otra persona se
+// usa la dirección de SU nodo.
 //
 // Por eso cada función recibe la dirección base: no hay "un" servidor.
 
-import type { ProxyRequest, ProxyResponse } from '../shared/bridge';
+import type { ProxyRequest, ProxyResponse } from '../../shared/bridge';
 import type {
   CallParticipants,
   JoinRequest,
   JoinResponse,
   Member,
   MeResponse,
-  Message,
   NodeAddress,
   NodeInfo,
   Page,
   Role,
   Server,
+  ServerAddress,
   ServerCreate,
 } from './types';
 
 const DEFAULT_TIMEOUT_MS = 10_000;
-// Encender un servidor es levantar un proceso: el nodo espera hasta 20 s.
+// Crear un servidor es levantar un proceso: el nodo espera hasta 20 s.
 const SPAWN_TIMEOUT_MS = 30_000;
 
 /** `status` 0 es un error de red; -1, un error que no vino de HTTP. */
@@ -117,12 +116,14 @@ interface RequestOptions {
   token?: string;
   query?: Record<string, string | number | undefined>;
   timeoutMs?: number;
+  /** La ruta va tal cual, sin el prefijo `/api/v1` (para `/health`). */
+  raw?: boolean;
 }
 
 async function request<T>(baseUrl: string, path: string, options: RequestOptions = {}): Promise<T> {
-  const { method = 'GET', body, token, query, timeoutMs = DEFAULT_TIMEOUT_MS } = options;
+  const { method = 'GET', body, token, query, timeoutMs = DEFAULT_TIMEOUT_MS, raw = false } = options;
 
-  const url = new URL(`/api/v1${path}`, baseUrl);
+  const url = new URL(raw ? path : `/api/v1${path}`, baseUrl);
   for (const [key, value] of Object.entries(query ?? {})) {
     if (value !== undefined) url.searchParams.set(key, String(value));
   }
@@ -170,8 +171,13 @@ export interface Address {
   slug: string | null;
 }
 
+<<<<<<< HEAD:front/src/renderer/api.ts
 // Lo que la gente pega para unirse: "192.168.1.50:7273/casa-de-luis".
 // También acepta "http://…" y "hazel://…", y el slug es opcional.
+=======
+// Lo que la gente pega para unirse: "192.168.1.50:7272/casa-de-luis".
+// También acepta "http://…" y "hazel://…", y el slug es opcional.
+>>>>>>> pr-19:front/src/renderer/lib/api.ts
 export function parseAddress(input: string): Address {
   let value = input.trim();
   if (!value) throw new ApiError('Escribí la dirección que te pasaron.');
@@ -183,27 +189,13 @@ export function parseAddress(input: string): Address {
   const match = hostPort.match(/^(\[[^\]]+\]|[^:\s]+):(\d{1,5})$/);
   const host = match?.[1];
   if (!match || !host) {
-    throw new ApiError('La dirección tiene que tener la forma ip:puerto, por ejemplo 192.168.1.50:7273.');
+    throw new ApiError('La dirección tiene que tener la forma ip:puerto, por ejemplo 192.168.1.50:7272.');
   }
 
   const port = Number(match[2]);
   if (port < 1 || port > 65535) throw new ApiError('El puerto tiene que estar entre 1 y 65535.');
 
   return { baseUrl: `http://${host}:${port}`, host, port, slug };
-}
-
-// La URL de un grupo que corre en la misma máquina que el nodo.
-export function groupUrlFromNode(nodeUrl: string, port: number): string {
-  const url = new URL(nodeUrl);
-  url.port = String(port);
-  return url.origin;
-}
-
-export function callSocketUrl(baseUrl: string, serverId: string, channelId: string, token: string): string {
-  const url = new URL(`/api/v1/servers/${serverId}/channels/${channelId}/call`, baseUrl);
-  url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
-  url.searchParams.set('token', token);
-  return url.toString();
 }
 
 // ─── Endpoints ────────────────────────────────────────────────────────────────
@@ -215,6 +207,13 @@ const enc = encodeURIComponent;
 export const nodeInfo = (base: string) => request<NodeInfo>(base, '/node', { timeoutMs: 4000 });
 
 export const nodeAddress = (base: string) => request<NodeAddress>(base, '/node/address');
+
+/** Latencia real hasta un nodo, en milisegundos: ida y vuelta de `/health`. */
+export async function ping(base: string): Promise<number> {
+  const started = performance.now();
+  await request<unknown>(base, '/health', { raw: true, timeoutMs: 4000 });
+  return performance.now() - started;
+}
 
 export const listServers = (base: string) =>
   request<Page<Server>>(base, '/servers', { query: { limit: 100 } });
@@ -237,6 +236,9 @@ export const getServer = (base: string, id: string) => request<Server>(base, `/s
 
 export const getServerBySlug = (base: string, slug: string) =>
   request<Server>(base, `/servers/by-slug/${enc(slug)}`);
+
+export const serverAddress = (base: string, id: string) =>
+  request<ServerAddress>(base, `/servers/${enc(id)}/address`);
 
 // Identidad
 
@@ -269,31 +271,6 @@ export const setRole = (
 
 export const kick = (base: string, id: string, token: string, nickname: string) =>
   request<null>(base, `/servers/${enc(id)}/members/${enc(nickname)}`, { method: 'DELETE', token });
-
-// Mensajes
-
-export const messages = (
-  base: string,
-  serverId: string,
-  channelId: string,
-  { limit = 50, offset = 0 } = {},
-) =>
-  request<Page<Message>>(base, `/servers/${enc(serverId)}/channels/${enc(channelId)}/messages`, {
-    query: { limit, offset },
-  });
-
-export const sendMessage = (
-  base: string,
-  serverId: string,
-  channelId: string,
-  token: string,
-  content: string,
-) =>
-  request<Message>(base, `/servers/${enc(serverId)}/channels/${enc(channelId)}/messages`, {
-    method: 'POST',
-    token,
-    body: { content },
-  });
 
 // Llamadas
 

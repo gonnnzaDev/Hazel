@@ -5,6 +5,7 @@
 // (HAZEL_CORS_ORIGINS): una página cargada desde file:// tiene origen `null`,
 // y un nodo que solo acepta orígenes conocidos la rechazaría.
 
+import * as os from 'node:os';
 import * as path from 'node:path';
 import {
   app,
@@ -12,30 +13,39 @@ import {
   Menu,
   clipboard,
   ipcMain,
-  nativeTheme,
   net,
   session,
   shell,
   type IpcMainInvokeEvent,
 } from 'electron';
-import { IPC, type ProxyRequest, type ProxyResponse } from '../shared/bridge';
+import { IPC, type ProxyRequest, type ProxyResponse, type SystemStats } from '../shared/bridge';
 
 const DEV = process.argv.includes('--dev');
 const DEFAULT_TIMEOUT_MS = 10_000;
 
-// Permisos que la ventana puede pedir. El micrófono es para los canales de voz.
-const ALLOWED_PERMISSIONS = new Set(['media', 'clipboard-sanitized-write']);
+// Permisos que la ventana puede pedir. El micrófono es para los canales de voz
+// y las notificaciones avisan de menciones con la ventana en segundo plano.
+//epico
+const ALLOWED_PERMISSIONS = new Set(['media', 'clipboard-sanitized-write', 'notifications']);
 
 function createWindow(): void {
   const win = new BrowserWindow({
+<<<<<<< HEAD
     width: 1240,
     height: 780,
     minWidth: 960,
     minHeight: 580,
     title: 'Hazel',
+=======
+    width: 1360,
+    height: 840,
+    minWidth: 1024,
+    minHeight: 640,
+    title: 'Hazel',
+>>>>>>> pr-19
     icon: path.join(__dirname, '..', 'assets', 'icon.png'),
     // El mismo fondo que la app, para que no haya un destello blanco al abrir.
-    backgroundColor: nativeTheme.shouldUseDarkColors ? '#313338' : '#ffffff',
+    backgroundColor: '#0a0e14',
     autoHideMenuBar: true,
     show: false,
     webPreferences: {
@@ -93,6 +103,29 @@ async function proxyRequest(_event: IpcMainInvokeEvent, request: ProxyRequest): 
   }
 }
 
+// Uso de CPU de toda la máquina entre una medición y la siguiente: la
+// diferencia de tiempo ocioso sobre la diferencia de tiempo total de los núcleos.
+let lastCpu = os.cpus().map((cpu) => cpu.times);
+
+function systemStats(): SystemStats {
+  const now = os.cpus().map((cpu) => cpu.times);
+  let idle = 0;
+  let total = 0;
+  now.forEach((times, i) => {
+    const before = lastCpu[i] ?? times;
+    const sum = (t: os.CpuInfo['times']) => t.user + t.nice + t.sys + t.idle + t.irq;
+    idle += times.idle - before.idle;
+    total += sum(times) - sum(before);
+  });
+  lastCpu = now;
+  return {
+    cpu: total > 0 ? Math.min(1, Math.max(0, 1 - idle / total)) : 0,
+    cores: now.length,
+    memUsed: os.totalmem() - os.freemem(),
+    memTotal: os.totalmem(),
+  };
+}
+
 void app.whenReady().then(() => {
   if (!DEV && process.platform !== 'darwin') Menu.setApplicationMenu(null);
 
@@ -105,6 +138,7 @@ void app.whenReady().then(() => {
   ipcMain.handle(IPC.copy, (_event, text: unknown) => {
     clipboard.writeText(String(text ?? ''));
   });
+  ipcMain.handle(IPC.stats, () => systemStats());
 
   createWindow();
 

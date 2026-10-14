@@ -3,7 +3,9 @@
   "extends": "./tsconfig.base.json",
   "compilerOptions": {
     "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "jsx": "react-jsx",
+    "resolveJsonModule": true,
     "types": []
   },
-  "include": ["src/renderer/**/*.ts", "src/shared/**/*.ts"]
+  "include": ["src/renderer/**/*.ts", "src/renderer/**/*.tsx", "src/shared/**/*.ts"]
 }
