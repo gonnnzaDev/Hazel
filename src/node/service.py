@@ -12,7 +12,6 @@ from identity.roles import Role
 from node import repository
 from servers import service as servers_service
 from servers.model import Server
-from servers.repository import get_server, normalize_slug, slug_taken
 from servers.schemas import ServerCreate
 from servers.states import ServerStatus
 
@@ -48,14 +47,14 @@ async def _allocate_port(
 
 
 async def create_group(session: Any, supervisor: Any, payload: ServerCreate) -> Server:
-    slug = normalize_slug(payload.slug)
+    slug = servers_service.normalize_slug(payload.slug)
     if not slug:
         raise ValidationDomainError(
             "The group identifier cannot be empty.",
             code="invalid_slug",
         )
 
-    if await slug_taken(session, slug):
+    if await servers_service.slug_taken(session, slug):
         raise ConflictError(
             f"The identifier '{slug}' is already in use.",
             code="slug_taken",
@@ -92,13 +91,15 @@ async def create_group(session: Any, supervisor: Any, payload: ServerCreate) -> 
 
 
 async def start_group(session: Any, supervisor: Any, server_id: RecordId) -> Server:
+    from servers.repository import get_server
+
     server = await get_server(session, server_id)
 
     if server.status is ServerStatus.DELETED:
         raise ConflictError(
             "This group was deleted and cannot be started again.",
             code="server_deleted",
-            extra={"server_id": str(server.id)},
+            extra={"server_id": str(server_id)},
         )
 
     if supervisor.is_running(server_id):
@@ -129,6 +130,8 @@ async def start_group(session: Any, supervisor: Any, server_id: RecordId) -> Ser
 
 
 async def stop_group(session: Any, supervisor: Any, server_id: RecordId) -> Server:
+    from servers.repository import get_server
+
     server = await get_server(session, server_id)
 
     await supervisor.terminate(server_id)
@@ -141,6 +144,8 @@ async def stop_group(session: Any, supervisor: Any, server_id: RecordId) -> Serv
 
 
 async def delete_group(session: Any, supervisor: Any, server_id: RecordId) -> None:
+    from servers.repository import get_server
+
     server = await get_server(session, server_id)
 
     await supervisor.terminate(server_id)

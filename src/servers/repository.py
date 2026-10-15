@@ -9,17 +9,13 @@ from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from channels.model import Channel, ChannelKind
 from common.types import RecordId, new_id, utcnow
-from core.api.errors import NotFoundError, ValidationDomainError
-from messages.model import Message
+from core.api.errors import NotFoundError
 from servers.model import Server
-from servers.schemas import ChannelCreate, ServerUpdate
+from servers.schemas import ServerUpdate
 from servers.states import ServerStatus
 
 logger = logging.getLogger(__name__)
-
-DEFAULT_CHANNEL_NAME = "general"
 
 
 WILDCARD_HOSTS = frozenset({"0.0.0.0", "::", "[::]"})  # noqa: S104
@@ -84,52 +80,6 @@ async def resolve_by_slug(session: AsyncSession, slug: str) -> Server:
     return server
 
 
-def build_channels(payload_channels: list[ChannelCreate]) -> list[Channel]:
-    channels: list[Channel] = []
-    for raw in payload_channels:
-        try:
-            kind = ChannelKind(raw.kind)
-        except ValueError:
-            raise ValidationDomainError(
-                f"'{raw.kind}' is not a valid channel kind.",
-                code="invalid_channel_kind",
-                extra={"allowed": [k.value for k in ChannelKind]},
-            ) from None
-        channels.append(
-            Channel(
-                id=new_id(),
-                name=raw.name.strip(),
-                kind=kind,
-                topic=raw.topic,
-                position=raw.position,
-                is_default=raw.is_default,
-            )
-        )
-    return channels
-
-
-def ensure_default_channel(server: Server) -> None:
-    if not server.channels:
-        server.channels.append(
-            Channel(
-                id=new_id(),
-                name=DEFAULT_CHANNEL_NAME,
-                kind=ChannelKind.TEXT,
-                is_default=True,
-            )
-        )
-        return
-
-    defaults = [c for c in server.channels if c.is_default]
-    if len(defaults) > 1:
-        raise ValidationDomainError(
-            "A server cannot have more than one default channel.",
-            code="multiple_default_channels",
-        )
-    if not defaults:
-        server.channels[0].is_default = True
-
-
 async def update_server(session: AsyncSession, server: Server, payload: ServerUpdate) -> Server:
     changes = payload.model_dump(exclude_unset=True)
 
@@ -161,37 +111,3 @@ async def mark_all_inactive(session: AsyncSession) -> int:
             count,
         )
     return count
-
-
-async def create_message(
-    session: AsyncSession, channel_id: RecordId, author_nickname: str, content: str
-) -> Message:
-    message = Message(
-        id=new_id(),
-        channel_id=channel_id,
-        author_nickname=author_nickname,
-        content=content,
-    )
-    session.add(message)
-    await session.flush()
-    logger.info("message recorded channel=%s nick=%s", channel_id, author_nickname)
-    return message
-
-
-async def list_messages(
-    session: AsyncSession, channel_id: RecordId, limit: int = 50, offset: int = 0
-) -> tuple[list[Message], int]:
-    total = (
-        await session.execute(
-            select(func.count()).select_from(Message).where(Message.channel_id == channel_id)
-        )
-    ).scalar_one()
-    stmt = (
-        select(Message)
-        .where(Message.channel_id == channel_id)
-        .order_by(Message.created_at.desc())
-        .limit(limit)
-        .offset(offset)
-    )
-    messages = (await session.execute(stmt)).scalars().all()
-    return list(messages), int(total)

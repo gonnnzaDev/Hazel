@@ -5,16 +5,12 @@ from typing import Annotated
 from fastapi import APIRouter, Path, Query, Request, status
 from sqlalchemy import select
 
-from channels.model import Channel
 from common.types import RecordId
 from core.api.deps import SessionDep
 from node import service as node_service
 from node.schemas import NodeAddress
 from servers import repository, service
 from servers.schemas import (
-    MessageCreate,
-    MessageListResponse,
-    MessageRead,
     ServerAddress,
     ServerCreate,
     ServerListResponse,
@@ -135,38 +131,3 @@ async def get_address(server_id: ServerId, session: SessionDep) -> ServerAddress
         is_active=server.status.accepts_traffic,
         node=NodeAddress.model_validate(node_service.node_address()),
     )
-
-
-@router.post(
-    "/{server_id}/channels/{channel_id}/messages",
-    response_model=MessageRead,
-    summary="Send a text message",
-)
-async def create_message(
-    server_id: ServerId,
-    channel_id: Annotated[RecordId, Path(description="Channel identifier")],
-    payload: MessageCreate,
-    session: SessionDep,
-) -> MessageRead:
-    server = await repository.get_server(session, server_id)
-    stmt = select(Channel).where(Channel.id == channel_id, Channel.server_id == server.id)
-    (await session.execute(stmt)).scalar_one()
-    message = await repository.create_message(
-        session, channel_id=channel_id, author_nickname="anon", content=payload.content
-    )
-    return MessageRead.model_validate(message)
-
-
-@router.get(
-    "/{server_id}/channels/{channel_id}/messages",
-    response_model=MessageListResponse,
-    summary="List channel messages",
-)
-async def list_messages(
-    session: SessionDep,
-    server_id: ServerId,
-    channel_id: Annotated[RecordId, Path(description="Channel identifier")],
-    limit: Annotated[int, Query(ge=1, le=100)] = 50,
-    offset: Annotated[int, Query(ge=0)] = 0,
-) -> MessageListResponse:
-    ...
