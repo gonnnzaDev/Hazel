@@ -1,18 +1,16 @@
 from __future__ import annotations
 
 import logging
+import re
+import unicodedata
 
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from common.types import new_id, utcnow
+from common.types import RecordId, new_id, utcnow
 from core.api.errors import ConflictError, ServerInactiveError, ValidationDomainError
 from servers.model import Server
-from servers.repository import (
-    build_channels,
-    ensure_default_channel,
-    normalize_slug,
-    slug_taken,
-)
+from servers.repository import normalize_slug as _normalize_slug, slug_taken as _slug_taken
 from servers.schemas import ServerCreate
 from servers.states import ServerStatus, can_transition
 
@@ -20,6 +18,19 @@ logger = logging.getLogger(__name__)
 
 MIN_SLUG_LENGTH = 2
 MAX_SLUG_LENGTH = 64
+
+
+def normalize_slug(raw: str) -> str:
+    decomposed = unicodedata.normalize("NFKD", raw.strip().casefold())
+    without_accents = "".join(ch for ch in decomposed if not unicodedata.combining(ch))
+    return re.sub(r"[^a-z0-9]+", "-", without_accents).strip("-")
+
+
+async def slug_taken(session: AsyncSession, slug: str, *, exclude: RecordId | None = None) -> bool:
+    stmt = select(func.count()).select_from(Server).where(Server.slug == slug)
+    if exclude is not None:
+        stmt = stmt.where(Server.id != exclude)
+    return (await session.execute(stmt)).scalar_one() > 0
 
 
 async def create_server(session: AsyncSession, payload: ServerCreate, *, port: int) -> Server:
@@ -47,10 +58,8 @@ async def create_server(session: AsyncSession, payload: ServerCreate, *, port: i
         status=ServerStatus.CREATING,
         bind_port=port,
         max_members=payload.max_members,
-        channels=build_channels(payload.channels),
     )
 
-    ensure_default_channel(server)
     session.add(server)
     await session.flush()
 

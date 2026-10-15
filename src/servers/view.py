@@ -7,18 +7,14 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Path, Query, Request, status
 from sqlalchemy import select
 
-from channels.model import Channel
 from common.types import RecordId
 from core.api.deps import SessionDep
-from core.api.errors import ConflictError, NotFoundError, PermissionDeniedError
+from core.api.errors import ConflictError, NotFoundError
 from identity.deps import CurrentMember
 from node import service as node_service
 from node.schemas import NodeAddress
 from servers import repository, service
 from servers.schemas import (
-    MessageCreate,
-    MessageListResponse,
-    MessageRead,
     ServerAddress,
     ServerCreate,
     ServerListResponse,
@@ -201,51 +197,4 @@ async def get_address(server_id: ServerId, session: SessionDep) -> ServerAddress
         server_name=server.name,
         is_active=server.status.accepts_traffic,
         node=NodeAddress.model_validate(node_service.node_address()),
-    )
-
-
-@router.post(
-    "/{server_id}/channels/{channel_id}/messages",
-    response_model=MessageRead,
-    summary="Enviar un mensaje de texto",
-)
-async def create_message(
-    server_id: ServerId,
-    channel_id: ChannelId,
-    payload: MessageCreate,
-    session: SessionDep,
-    member: CurrentMember,
-) -> MessageRead:
-    """Write a text message to a server channel."""
-    server = await repository.get_server(session, server_id)
-    if member.server_id != server.id:
-        raise PermissionDeniedError("Tu token es de otro servidor.", code="wrong_server")
-    await _channel_of(session, server.id, channel_id)
-    message = await repository.create_message(
-        session, channel_id=channel_id, author_nickname=member.nickname, content=payload.content
-    )
-    return MessageRead.model_validate(message)
-
-
-@router.get(
-    "/{server_id}/channels/{channel_id}/messages",
-    response_model=MessageListResponse,
-    summary="Listar mensajes de un canal",
-)
-async def list_messages(
-    session: SessionDep,
-    server_id: ServerId,
-    channel_id: ChannelId,
-    limit: Annotated[int, Query(ge=1, le=100)] = 50,
-    offset: Annotated[int, Query(ge=0)] = 0,
-) -> MessageListResponse:
-    """Channel message history, newest first."""
-    server = await repository.get_server(session, server_id)
-    await _channel_of(session, server.id, channel_id)
-    messages, total = await repository.list_messages(session, channel_id, limit=limit, offset=offset)
-    return MessageListResponse(
-        items=[MessageRead.model_validate(m) for m in messages],
-        total=total,
-        limit=limit,
-        offset=offset,
     )
