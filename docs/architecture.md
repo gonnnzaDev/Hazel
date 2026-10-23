@@ -52,9 +52,11 @@ nickname on two servers are two unrelated people.
   pick a nickname, join.
 - It reduces attack surface: no passwords to leak, no brute force to implement.
 
-**Pending owner's decision:** the user reserves a personal name for personal
-use (private chats). Explicitly out of scope until designed; the architecture
-doesn't prevent it.
+**Decision:** the nickname is the identity and is scoped to one server. It is
+the first thing requested when someone joins, so a person can be in several
+servers and the nickname is requested again on each one. There is no global
+account and no personal name for now; if private chats need one later, it will
+be designed separately.
 
 ### Roles
 
@@ -96,26 +98,17 @@ Kafka provides:
   (listeners).
 - **Failure isolation**: if a consumer crashes, the message stays in the log.
 
-### The tension to keep in mind
+### Decision: Kafka is part of every install
 
-> **Kafka is a heavy dependency for a process running on a user's PC.**
-> Talking to a single broker means bringing up ZooKeeper or KRaft, keeping
-> ZooKeeper operational, and keeping it running.
+**Owner's decision:** every PC runs a complete Kafka broker. There is no
+embedded mode and no local fallback: Kafka is a base dependency, like
+PostgreSQL, and the node is not expected to work without it.
 
-This is a real contradiction with the self-hosting goal and must be resolved
-before the product is used. Options, **pending your decision**:
-
-1. **Embedded mode**: Kafka runs inside the same Hazel node, in a separate
-   process the node launches and manages. The owner never sees it; if something
-   fails, the node reports it.
-2. **Transport with abstraction**: the chat bus is an interface with a Kafka
-   implementation and a local implementation. Kafka is the "real" mode
-   (multi-user, several nodes), local mode is the default for a single owner.
-3. **Pure Kafka**: the owner must run Kafka before Hazel. Simple to implement,
-   high startup friction.
-
-The chat PR implementation will expose the bus as an **interface**, so the
-decision isn't blocked. But it should be resolved before building on Kafka.
+This removes the mode switch: the installer and the compose stack bring Kafka
+up with everything else, so the owner never has to configure it by hand. A node
+whose Kafka is down reports the failure like any other dependency failure. The
+chat bus can therefore assume Kafka exists when cross-process fan-out is
+implemented.
 
 ---
 
@@ -207,17 +200,16 @@ GET    /api/v1/servers/{id}/address        the host:port to share
 DELETE /api/v1/servers/{id}                delete permanently
 ```
 
-### Two unresolved things
+### Decisions
 
-1. **The shareable address isn't always shareable.** By default the node listens
-   on `0.0.0.0`, which is a wildcard: you can't connect to `0.0.0.0`. The API
-   flags it with `host_is_wildcard: true` instead of guessing the owner's IP,
-   because a node can have VPN, docker or several NICs. Still to decide how it
-   resolves: does the owner type their IP by hand, do we detect it, or ask once
-   at deploy time?
-2. **Deletion is hard.** Today `DELETE` removes the row. With messages inside
-   that's irreversible. Do you want soft delete, or keep and mark the server as
-   deleted?
+1. **The shareable address is detected automatically.** The node enumerates
+   its interfaces and returns `recommended` plus every `candidates` entry,
+   ordered private IPv4 first. The client uses `recommended` and only asks the
+   owner to choose when there is no usable address. It never guesses a single
+   address silently, because VPNs, Docker and several NICs make that wrong.
+2. **Deletion stays hard for now.** `DELETE` removes the server row and its
+   data. Soft delete is not implemented; if deleting heavy history becomes
+   asynchronous, the `deleting` state comes back.
 
 ---
 
@@ -241,22 +233,29 @@ PostgreSQL transport.
 
 **Known limitation.** The bus is process-local. The node and each group run in
 separate processes, so a socket connected to one process does not see events
-published by another process. Clients that use a single process for both HTTP
-and WebSocket are fully covered. Cross-process fan-out is tied to the pending
-Kafka/transport decision below.
+published by another process. The Kafka decision makes a broker available on
+every node, so cross-process fan-out will move onto Kafka when implemented.
+Until then, clients that use a single process for both HTTP and WebSocket are
+fully covered.
+
+## 9. Backups
+
+Each node keeps its PostgreSQL as the source of truth. Backups must cover the
+last 3 days of changes, so a restore can recover any recent state inside that
+window. Backups stay with the node; off-site replication is not part of this
+decision yet.
+
+The mechanism (WAL archiving with point-in-time recovery, or scheduled dumps)
+is an implementation detail still to be built. The fixed part is the 3-day
+window.
 
 ## Pending decisions
 
 These questions stay open on purpose, until you resolve them:
 
-1. **Kafka on the user's PC** — how to solve the heavy-dependency problem?
-   This also decides the cross-process transport for realtime events (see
-   sections 4 and 8).
-2. **Server discovery** — if a node listens on `192.168.1.50:7272`, how does a
+1. **Server discovery** — if a node listens on `192.168.1.50:7272`, how does a
    guest find it? Today the idea is sharing `host:port` by hand.
-3. **Personal name vs nickname** — the user mentioned a personal name for
-   personal use. Is it the same entity or separate?
-4. **Per-owner persistence** — does each node keep everything in its local
-   PostgreSQL, or is there backup/replication?
-5. **Mobile** — native, Flutter, React Native? The API doesn't constrain it,
+2. **Backup mechanism** — WAL archiving with point-in-time recovery, or
+   scheduled dumps, to cover the 3-day window from section 9.
+3. **Mobile** — native, Flutter, React Native? The API doesn't constrain it,
    but the client does.
