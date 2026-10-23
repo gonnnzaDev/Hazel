@@ -221,12 +221,37 @@ DELETE /api/v1/servers/{id}                delete permanently
 
 ---
 
+## 8. Realtime events
+
+The general stream is `WS /api/v1/ws?token=<token>`. A token identifies one
+server, so a socket is scoped to that server from the first frame. The server
+sends a `connection.ready` event and then application events; channel-scoped
+events require an explicit `channel.subscribe`.
+
+**Why an in-process bus first.** `src/events/bus.py` is a small async pub/sub
+with one bounded queue per socket. It adds no infrastructure, keeps working on
+a single-process node, and makes the flow testable. Slow consumers are closed
+instead of letting their queue grow without limit.
+
+**Why events wait for commit.** Views call `events.outbox.queue_event()` and the
+database dependency dispatches after `COMMIT`. This prevents the classic race
+where a client receives `message.created` and immediately fetches history
+before the message is visible. The outbox is also the seam for a future Kafka or
+PostgreSQL transport.
+
+**Known limitation.** The bus is process-local. The node and each group run in
+separate processes, so a socket connected to one process does not see events
+published by another process. Clients that use a single process for both HTTP
+and WebSocket are fully covered. Cross-process fan-out is tied to the pending
+Kafka/transport decision below.
+
 ## Pending decisions
 
 These questions stay open on purpose, until you resolve them:
 
 1. **Kafka on the user's PC** — how to solve the heavy-dependency problem?
-   (see section 4)
+   This also decides the cross-process transport for realtime events (see
+   sections 4 and 8).
 2. **Server discovery** — if a node listens on `192.168.1.50:7272`, how does a
    guest find it? Today the idea is sharing `host:port` by hand.
 3. **Personal name vs nickname** — the user mentioned a personal name for

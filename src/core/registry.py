@@ -6,6 +6,7 @@ from fastapi import APIRouter
 
 from calls.view import router as calls_router
 from common.view import router as common_router
+from events.view import router as events_router
 from identity.view import router as identity_router
 from node.view import router as node_router
 from servers.view import router as servers_router
@@ -13,7 +14,6 @@ from servers.view import router as servers_router
 
 @dataclass(frozen=True, slots=True)
 class AppConfig:
-
     name: str
     router: APIRouter
     prefix: str = ""
@@ -28,11 +28,11 @@ INSTALLED_APPS: tuple[AppConfig, ...] = (
     AppConfig(name="calls", router=calls_router, prefix="/servers", tags=("calls",)),
     AppConfig(name="channels", router=APIRouter(), prefix="/servers", tags=("channels",)),
     AppConfig(name="messages", router=APIRouter(), prefix="/servers", tags=("messages",)),
+    AppConfig(name="events", router=events_router, tags=("events",)),
 )
 
 
 class AppRegistry:
-
     def __init__(self, installed: tuple[AppConfig, ...] = INSTALLED_APPS) -> None:
         self._installed = installed
 

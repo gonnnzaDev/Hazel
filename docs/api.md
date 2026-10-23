@@ -328,42 +328,58 @@ the same router and cutting service wouldn't be fair.
 
 | Method | Route | What it does |
 |---|---|---|
-| `[ ]` | `WS /api/v1/ws?token=<token>` | Event channel. |
+| `[x]` | `WS /api/v1/ws?token=<token>` | General event channel. |
 
 Token goes in query string because browsers and several mobile clients don't
-allow custom headers on the WebSocket handshake.
+allow custom headers on the WebSocket handshake. The socket is authenticated
+once at connect time. The token must belong to an **active** server; invalid,
+expired, foreign-server and inactive-server tokens close with code `1008`.
 
-### Server events
+Every event uses the same envelope. `channel_id` is present only for
+channel-scoped events:
 
 ```json
 { "type": "message.created", "server_id": "...", "channel_id": "...", "data": { } }
 ```
 
+Server-scoped events go to every socket connected to that server.
+Channel-scoped events go only to sockets that have subscribed to the channel.
+
+### Server events
+
 | Event | When |
 |---|---|
-| `message.created` | Someone wrote. |
-| `message.updated` | Someone edited. |
-| `message.deleted` | Someone deleted. |
-| `reaction.added` | Someone reacted. |
-| `reaction.removed` | Someone removed a reaction. |
-| `presence.update` | Someone joined or left. |
-| `typing.start` | Someone is typing. |
+| `connection.ready` | The socket is authenticated. Data: `member`, `server`. |
+| `message.created` | Someone wrote in a subscribed channel. |
+| `presence.update` | A member's first socket connected or last socket disconnected. |
+| `typing.start` | A subscribed member is typing. |
 | `member.joined` | Someone joined the server. |
-| `member.left` | Someone left. |
-| `server.updated` | Name, channels, etc. changed. |
-| `server.state_changed` | Server changed state. |
-| `node.state_changed` | Node opened or closed the port. |
+| `member.left` | Someone left or was kicked. |
+| `server.updated` | Name, description or limits changed. |
+| `server.state_changed` | Server was created, activated, deactivated or deleted. |
+| `channel.subscribed` | The server accepted a `channel.subscribe` request. |
+| `channel.unsubscribed` | The channel subscription was removed. |
+| `heartbeat` | Acknowledgement of a client heartbeat. Data: `server_time`. |
+| `error` | A client event was invalid. Data: `code`, `detail`. |
+
+Planned, not emitted yet because their HTTP endpoints are not implemented:
+`message.updated`, `message.deleted`, `reaction.added`, `reaction.removed`,
+`node.state_changed`.
 
 ### Client events
 
 ```json
-{ "type": "typing.start", "channel_id": "..." }
 { "type": "channel.subscribe", "channel_id": "..." }
+{ "type": "channel.unsubscribe", "channel_id": "..." }
+{ "type": "typing.start", "channel_id": "..." }
 { "type": "heartbeat" }
 ```
 
-Server ignores unknown events instead of dropping the connection. An old mobile
-client that doesn't know a new event doesn't crash.
+A client must send `channel.subscribe` before it receives channel-scoped
+events. `typing.start` is only accepted for subscribed channels and is
+broadcast to the other subscribers. The server ignores unknown event types
+instead of dropping the connection, so an old mobile client that doesn't know
+a new event doesn't crash.
 
 ---
 
