@@ -3,10 +3,10 @@ from __future__ import annotations
 from typing import Annotated
 
 from fastapi import APIRouter, Path, Query, Request, status
-from sqlalchemy import select
 
 from common.types import RecordId
 from core.api.deps import SessionDep
+from events.outbox import queue_event
 from node import service as node_service
 from node.schemas import NodeAddress
 from servers import repository, service
@@ -34,6 +34,12 @@ QueryOffset = Annotated[int, Query(ge=0, description="How many servers to skip")
 async def create_server(payload: ServerCreate, session: SessionDep, request: Request) -> ServerRead:
     supervisor = node_service.supervisor_from(request)
     server = await node_service.create_group(session, supervisor, payload)
+    queue_event(
+        session,
+        event_type="server.state_changed",
+        server_id=str(server.id),
+        data={"server_id": str(server.id), "status": server.status.value},
+    )
     return ServerRead.model_validate(server)
 
 
@@ -71,6 +77,13 @@ async def update_server(
 ) -> ServerRead:
     server = await repository.get_server(session, server_id)
     updated = await repository.update_server(session, server, payload)
+    data = ServerRead.model_validate(updated).model_dump(mode="json")
+    queue_event(
+        session,
+        event_type="server.updated",
+        server_id=str(updated.id),
+        data=data,
+    )
     return ServerRead.model_validate(updated)
 
 
@@ -82,6 +95,12 @@ async def update_server(
 async def activate_server(server_id: ServerId, session: SessionDep) -> ServerRead:
     server = await repository.get_server(session, server_id)
     activated = await service.activate_server(session, server)
+    queue_event(
+        session,
+        event_type="server.state_changed",
+        server_id=str(activated.id),
+        data={"server_id": str(activated.id), "status": activated.status.value},
+    )
     return ServerRead.model_validate(activated)
 
 
@@ -93,6 +112,12 @@ async def activate_server(server_id: ServerId, session: SessionDep) -> ServerRea
 async def deactivate_server(server_id: ServerId, session: SessionDep) -> ServerRead:
     server = await repository.get_server(session, server_id)
     deactivated = await service.deactivate_server(session, server)
+    queue_event(
+        session,
+        event_type="server.state_changed",
+        server_id=str(deactivated.id),
+        data={"server_id": str(deactivated.id), "status": deactivated.status.value},
+    )
     return ServerRead.model_validate(deactivated)
 
 
@@ -115,6 +140,12 @@ async def heartbeat(server_id: ServerId, session: SessionDep) -> ServerRead:
 async def delete_server(server_id: ServerId, session: SessionDep) -> None:
     server = await repository.get_server(session, server_id)
     await service.delete_server(session, server)
+    queue_event(
+        session,
+        event_type="server.state_changed",
+        server_id=str(server_id),
+        data={"server_id": str(server_id), "status": "deleted"},
+    )
 
 
 @router.get(

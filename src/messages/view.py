@@ -8,6 +8,7 @@ from sqlalchemy import select
 from channels.model import Channel
 from common.types import RecordId
 from core.api.deps import SessionDep
+from events.outbox import queue_event
 from messages import repository
 from messages.schemas import MessageCreate, MessageListResponse, MessageRead
 from servers import repository as servers_repository
@@ -37,6 +38,19 @@ async def create_message(
     message = await repository.create_message(
         session, channel_id=channel_id, author_nickname="anon", content=payload.content
     )
+    queue_event(
+        session,
+        event_type="message.created",
+        server_id=str(server.id),
+        channel_id=str(channel_id),
+        data={
+            "id": str(message.id),
+            "channel_id": str(channel_id),
+            "author": {"nickname": message.author_nickname},
+            "content": message.content,
+            "created_at": message.created_at.isoformat(),
+        },
+    )
     return MessageRead.model_validate(message)
 
 
@@ -53,7 +67,9 @@ async def list_messages(
     offset: QueryOffset = 0,
 ) -> MessageListResponse:
     await servers_repository.get_server(session, server_id)
-    messages, total = await repository.list_messages(session, channel_id, limit=limit, offset=offset)
+    messages, total = await repository.list_messages(
+        session, channel_id, limit=limit, offset=offset
+    )
     return MessageListResponse(
         items=[MessageRead.model_validate(m) for m in messages],
         total=total,
