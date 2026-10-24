@@ -5,16 +5,14 @@ from __future__ import annotations
 from typing import Annotated
 
 from fastapi import APIRouter, Path, Query, Request, status
-from sqlalchemy import select
 
 from common.types import RecordId
 from core.api.admin import AdminAuth
 from core.api.deps import SessionDep
-from core.api.errors import ConflictError, NotFoundError
-from identity.deps import CurrentMember
+
 from node import service as node_service
 from node.schemas import NodeAddress
-from servers import repository, service
+from servers import repository
 from servers.model import Channel
 from servers.schemas import (
     ServerAddress,
@@ -34,9 +32,13 @@ ChannelId = Annotated[RecordId, Path(description="Identificador del canal")]
 
 async def _channel_of(session: SessionDep, server_id: RecordId, channel_id: RecordId) -> Channel:
     """The channel, if it belongs to this server; 404 instead of 500 otherwise."""
+    from sqlalchemy import select
+
     stmt = select(Channel).where(Channel.id == channel_id, Channel.server_id == server_id)
     channel = (await session.execute(stmt)).scalar_one_or_none()
     if channel is None:
+        from core.api.errors import NotFoundError
+
         raise NotFoundError(
             "El canal no existe en este servidor.",
             code="channel_not_found",
@@ -119,17 +121,9 @@ async def activate_server(
     _admin: AdminAuth,
 ) -> ServerRead:
     """Reopen the port of an inactive server; all data is intact."""
-    try:
-        supervisor = node_service.supervisor_from(request)
-    except ConflictError:
-        supervisor = None
-    if supervisor is not None:
-        started = await node_service.start_group(session, supervisor, server_id)
-        return ServerRead.model_validate(started)
-
-    server = await repository.get_server(session, server_id)
-    activated = await service.activate_server(session, server)
-    return ServerRead.model_validate(activated)
+    supervisor = node_service.supervisor_from(request)
+    server = await node_service.start_group(session, supervisor, server_id)
+    return ServerRead.model_validate(server)
 
 
 @router.post(
@@ -144,17 +138,9 @@ async def deactivate_server(
     _admin: AdminAuth,
 ) -> ServerRead:
     """Close the port; preserves all data for reactivation."""
-    try:
-        supervisor = node_service.supervisor_from(request)
-    except ConflictError:
-        supervisor = None
-    if supervisor is not None:
-        stopped = await node_service.stop_group(session, supervisor, server_id)
-        return ServerRead.model_validate(stopped)
-
-    server = await repository.get_server(session, server_id)
-    deactivated = await service.deactivate_server(session, server)
-    return ServerRead.model_validate(deactivated)
+    supervisor = node_service.supervisor_from(request)
+    server = await node_service.stop_group(session, supervisor, server_id)
+    return ServerRead.model_validate(server)
 
 
 @router.post(
@@ -185,16 +171,8 @@ async def delete_server(
     _admin: AdminAuth,
 ) -> None:
     """Permanently delete the server; irreversible."""
-    try:
-        supervisor = node_service.supervisor_from(request)
-    except ConflictError:
-        supervisor = None
-    if supervisor is not None:
-        await node_service.delete_group(session, supervisor, server_id)
-        return
-
-    server = await repository.get_server(session, server_id)
-    await service.delete_server(session, server)
+    supervisor = node_service.supervisor_from(request)
+    await node_service.delete_group(session, supervisor, server_id)
 
 
 @router.get(
