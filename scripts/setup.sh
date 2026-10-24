@@ -138,9 +138,11 @@ else
     # Compose fails on purpose when HAZEL_SECRET_KEY is missing. We generate a
     # real one so the first start works with no extra steps.
     SECRET="$(python3 -c 'import secrets; print(secrets.token_urlsafe(32))' 2>/dev/null || python -c 'import secrets; print(secrets.token_urlsafe(32))' 2>/dev/null || head -c 32 /dev/urandom | base64)"
+    ADMIN_TOKEN="$(python3 -c 'import secrets; print(secrets.token_urlsafe(32))' 2>/dev/null || python -c 'import secrets; print(secrets.token_urlsafe(32))' 2>/dev/null || head -c 32 /dev/urandom | base64)"
 
     if command -v uv >/dev/null 2>&1; then
         SECRET="$(uv run python -c 'import secrets; print(secrets.token_urlsafe(32))' 2>/dev/null || echo "$SECRET")"
+        ADMIN_TOKEN="$(uv run python -c 'import secrets; print(secrets.token_urlsafe(32))' 2>/dev/null || echo "$ADMIN_TOKEN")"
     fi
 
     # Defaults mirroring src/config/conf.py: the only thing that must be unique
@@ -152,6 +154,8 @@ HAZEL_ENV=local
 HAZEL_DEBUG=true
 # Secret for signing sessions/tokens.
 HAZEL_SECRET_KEY=$SECRET
+# Token required to create, edit, activate, deactivate or delete servers.
+HAZEL_ADMIN_TOKEN=$ADMIN_TOKEN
 
 # Only for docker compose: the containerized node does not use them, only compose does.
 HAZEL_PUBLISH_HOST=0.0.0.0
@@ -241,6 +245,10 @@ ${GREEN}${BOLD}Done.${RESET}
 
   ${BOLD}Start the node${RESET}
     uv run python -m core
+
+  ${BOLD}Admin token${RESET}
+    Saved as HAZEL_ADMIN_TOKEN in .env. Send it as
+    Authorization: Bearer <token> on server management endpoints.
 
   Then, in another terminal:
 

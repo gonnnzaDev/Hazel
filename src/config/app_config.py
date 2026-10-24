@@ -9,6 +9,7 @@ class AppSection(BaseModel):
     env: Environment = "local"
     debug: bool = False
     secret_key: str = Field(min_length=1)
+    admin_token: str = ""
 
     @property
     def is_production(self) -> bool:

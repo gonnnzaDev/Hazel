@@ -33,6 +33,7 @@ services:
     environment:
       HAZEL_ENV: prod
       HAZEL_SECRET_KEY: ${HAZEL_SECRET_KEY:?set HAZEL_SECRET_KEY in your .env}
+      HAZEL_ADMIN_TOKEN: ${HAZEL_ADMIN_TOKEN:-}
       HAZEL_HOST: 0.0.0.0
       HAZEL_PORT: 7272
       HAZEL_DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-hazel}:${POSTGRES_PASSWORD:-hazel}@postgres:5432/${POSTGRES_DB:-hazel}
