@@ -170,13 +170,14 @@ def process_state(supervisor: Any, server: Server) -> dict[str, object]:
 
 
 def group_address(server: Server) -> dict[str, object]:
+    settings = get_settings()
     addresses = local_addresses()
     recommended = addresses[0].host if addresses else None
 
     return {
         "slug": server.slug,
         "port": server.bind_port,
-        "host": get_settings().host,
+        "bind_host": settings.host,
         "is_reachable": server.status.accepts_traffic,
         "recommended_host": recommended,
         "address": f"{recommended}:{server.bind_port}" if recommended else None,

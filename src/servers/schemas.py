@@ -5,9 +5,9 @@ from typing import Annotated
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from channels.schemas import ChannelRead
 from common import nickname as nick
 from common.types import RecordId
-from channels.schemas import ChannelRead
 from node.schemas import NodeAddress
 from servers.states import ServerStatus
 
@@ -66,12 +66,30 @@ class ServerAddress(BaseModel):
     server_name: str
     is_active: bool
 
+    host: str | None
+    port: int
+    address: str | None
+
     node: NodeAddress
 
     @property
     def share_hint(self) -> str | None:
-        recommended = self.node.recommended
-        return f"{recommended}:{self.node.port}" if recommended else None
+        return self.address
+
+    @classmethod
+    def from_server(cls, server: object, node: NodeAddress) -> ServerAddress:
+        host = node.recommended
+        port = server.bind_port  # type: ignore[attr-defined]
+        return cls(
+            server_id=server.id,  # type: ignore[attr-defined]
+            slug=server.slug,  # type: ignore[attr-defined]
+            server_name=server.name,  # type: ignore[attr-defined]
+            is_active=server.status.accepts_traffic,  # type: ignore[attr-defined]
+            host=host,
+            port=port,
+            address=f"{host}:{port}" if host else None,
+            node=node,
+        )
 
 
 class ServerListResponse(BaseModel):
