@@ -3,7 +3,6 @@ from __future__ import annotations
 from typing import Annotated
 
 from fastapi import APIRouter, Path, Query, Request, status
-from sqlalchemy import select
 
 from common.types import RecordId
 from core.api.deps import SessionDep
@@ -124,10 +123,5 @@ async def delete_server(server_id: ServerId, session: SessionDep) -> None:
 )
 async def get_address(server_id: ServerId, session: SessionDep) -> ServerAddress:
     server = await repository.get_server(session, server_id)
-    return ServerAddress(
-        server_id=server.id,
-        slug=server.slug,
-        server_name=server.name,
-        is_active=server.status.accepts_traffic,
-        node=NodeAddress.model_validate(node_service.node_address()),
-    )
+    node = NodeAddress.model_validate(node_service.node_address())
+    return ServerAddress.from_server(server, node)
