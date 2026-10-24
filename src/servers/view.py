@@ -2,18 +2,20 @@
 
 from __future__ import annotations
 
-from typing import Annotated, Any
+from typing import Annotated
 
 from fastapi import APIRouter, Path, Query, Request, status
 from sqlalchemy import select
 
 from common.types import RecordId
+from core.api.admin import AdminAuth
 from core.api.deps import SessionDep
 from core.api.errors import ConflictError, NotFoundError
 from identity.deps import CurrentMember
 from node import service as node_service
 from node.schemas import NodeAddress
 from servers import repository, service
+from servers.model import Channel
 from servers.schemas import (
     ServerAddress,
     ServerCreate,
@@ -49,7 +51,12 @@ async def _channel_of(session: SessionDep, server_id: RecordId, channel_id: Reco
     status_code=status.HTTP_201_CREATED,
     summary="Desplegar un servidor",
 )
-async def create_server(payload: ServerCreate, session: SessionDep, request: Request) -> ServerRead:
+async def create_server(
+    payload: ServerCreate,
+    session: SessionDep,
+    request: Request,
+    _admin: AdminAuth,
+) -> ServerRead:
     """Deploy a server; delegates port allocation and process startup to the node service."""
     supervisor = node_service.supervisor_from(request)
     server = await node_service.create_group(session, supervisor, payload)
@@ -89,7 +96,10 @@ async def get_server_by_slug(
 
 @router.patch("/{server_id}", response_model=ServerRead, summary="Editar un servidor")
 async def update_server(
-    server_id: ServerId, payload: ServerUpdate, session: SessionDep
+    server_id: ServerId,
+    payload: ServerUpdate,
+    session: SessionDep,
+    _admin: AdminAuth,
 ) -> ServerRead:
     """Edit name, description, member limit, or port."""
     server = await repository.get_server(session, server_id)
@@ -106,7 +116,7 @@ async def activate_server(
     server_id: ServerId,
     session: SessionDep,
     request: Request,
-    response: Any = None,
+    _admin: AdminAuth,
 ) -> ServerRead:
     """Reopen the port of an inactive server; all data is intact."""
     try:
@@ -131,7 +141,7 @@ async def deactivate_server(
     server_id: ServerId,
     session: SessionDep,
     request: Request,
-    response: Any = None,
+    _admin: AdminAuth,
 ) -> ServerRead:
     """Close the port; preserves all data for reactivation."""
     try:
@@ -152,7 +162,11 @@ async def deactivate_server(
     response_model=ServerRead,
     summary="Reportar que el proceso sigue vivo",
 )
-async def heartbeat(server_id: ServerId, session: SessionDep) -> ServerRead:
+async def heartbeat(
+    server_id: ServerId,
+    session: SessionDep,
+    _admin: AdminAuth,
+) -> ServerRead:
     """Record a heartbeat; distinguishes intentional stop from crash."""
     server = await repository.get_server(session, server_id)
     beat = await repository.heartbeat(session, server)
@@ -168,7 +182,7 @@ async def delete_server(
     server_id: ServerId,
     session: SessionDep,
     request: Request,
-    response: Any = None,
+    _admin: AdminAuth,
 ) -> None:
     """Permanently delete the server; irreversible."""
     try:
