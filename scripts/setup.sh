@@ -168,6 +168,8 @@ HAZEL_AUTO_MIGRATE=true
 
 HAZEL_HOST=0.0.0.0
 HAZEL_PORT=7272
+# Last port the node may assign to a group process.
+HAZEL_GROUP_PORT_END=7400
 HAZEL_ROOT_PATH=
 HAZEL_CORS_ORIGINS=*
 

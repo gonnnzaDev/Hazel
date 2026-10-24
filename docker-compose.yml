@@ -30,11 +30,13 @@ services:
         condition: service_started
     ports:
       - "${HAZEL_PUBLISH_HOST:-0.0.0.0}:${HAZEL_PUBLISH_PORT:-7272}:7272"
+      - "${HAZEL_PUBLISH_HOST:-0.0.0.0}:7273-${HAZEL_GROUP_PORT_END:-7400}:7273-${HAZEL_GROUP_PORT_END:-7400}"
     environment:
       HAZEL_ENV: prod
       HAZEL_SECRET_KEY: ${HAZEL_SECRET_KEY:?set HAZEL_SECRET_KEY in your .env}
       HAZEL_HOST: 0.0.0.0
       HAZEL_PORT: 7272
+      HAZEL_GROUP_PORT_END: ${HAZEL_GROUP_PORT_END:-7400}
       HAZEL_DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-hazel}:${POSTGRES_PASSWORD:-hazel}@postgres:5432/${POSTGRES_DB:-hazel}
       HAZEL_KAFKA_BOOTSTRAP_SERVERS: kafka:19092
       HAZEL_AUTO_MIGRATE: "true"
