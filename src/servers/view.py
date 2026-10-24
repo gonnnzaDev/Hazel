@@ -9,7 +9,7 @@ from core.api.admin import AdminAuth
 from core.api.deps import SessionDep
 from node import service as node_service
 from node.schemas import NodeAddress
-from servers import repository, service
+from servers import repository
 from servers.schemas import (
     ServerAddress,
     ServerCreate,
@@ -90,11 +90,12 @@ async def update_server(
 async def activate_server(
     server_id: ServerId,
     session: SessionDep,
+    request: Request,
     _admin: AdminAuth,
 ) -> ServerRead:
-    server = await repository.get_server(session, server_id)
-    activated = await service.activate_server(session, server)
-    return ServerRead.model_validate(activated)
+    supervisor = node_service.supervisor_from(request)
+    server = await node_service.start_group(session, supervisor, server_id)
+    return ServerRead.model_validate(server)
 
 
 @router.post(
@@ -105,11 +106,12 @@ async def activate_server(
 async def deactivate_server(
     server_id: ServerId,
     session: SessionDep,
+    request: Request,
     _admin: AdminAuth,
 ) -> ServerRead:
-    server = await repository.get_server(session, server_id)
-    deactivated = await service.deactivate_server(session, server)
-    return ServerRead.model_validate(deactivated)
+    supervisor = node_service.supervisor_from(request)
+    server = await node_service.stop_group(session, supervisor, server_id)
+    return ServerRead.model_validate(server)
 
 
 @router.post(
@@ -135,10 +137,11 @@ async def heartbeat(
 async def delete_server(
     server_id: ServerId,
     session: SessionDep,
+    request: Request,
     _admin: AdminAuth,
 ) -> None:
-    server = await repository.get_server(session, server_id)
-    await service.delete_server(session, server)
+    supervisor = node_service.supervisor_from(request)
+    await node_service.delete_group(session, supervisor, server_id)
 
 
 @router.get(
