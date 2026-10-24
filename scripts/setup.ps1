@@ -150,6 +150,10 @@ if (Test-Path ".env") {
     [System.Security.Cryptography.RandomNumberGenerator]::Fill($bytes)
     $Secret = [Convert]::ToBase64String($bytes).TrimEnd('=').Replace('+', '-').Replace('/', '_')
 
+    $adminBytes = New-Object byte[] 32
+    [System.Security.Cryptography.RandomNumberGenerator]::Fill($adminBytes)
+    $AdminToken = [Convert]::ToBase64String($adminBytes).TrimEnd('=').Replace('+', '-').Replace('/', '_')
+
     # Defaults mirroring src/config/conf.py: the only thing that must be unique
     # per install is the secret.
     $content = @(
@@ -157,6 +161,8 @@ if (Test-Path ".env") {
         "HAZEL_ENV=local",
         "HAZEL_DEBUG=true",
         "HAZEL_SECRET_KEY=$Secret",
+        "# Token required to create, edit, activate, deactivate or delete servers.",
+        "HAZEL_ADMIN_TOKEN=$AdminToken",
         "",
         "HAZEL_PUBLISH_HOST=0.0.0.0",
         "HAZEL_PUBLISH_PORT=7272",
@@ -260,6 +266,10 @@ $Green$Bold`Done.$Reset
 
   ${Bold}Start the node$Reset
     uv run python -m core
+
+  ${Bold}Admin token$Reset
+    Saved as HAZEL_ADMIN_TOKEN in .env. Send it as
+    Authorization: Bearer <token> on server management endpoints.
 
   Then, in another terminal:
 
