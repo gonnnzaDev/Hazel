@@ -12,7 +12,7 @@ from config.http_config import HttpSection
 from config.kafka_config import KafkaSection
 from config.limits_config import LimitsSection
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
+REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 class Settings(
