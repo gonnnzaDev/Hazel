@@ -10,8 +10,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from channels import repository as channels_repository
 from common.types import RecordId, new_id, utcnow
 from core.api.errors import ConflictError, ServerInactiveError, ValidationDomainError
+from events.outbox import queue_event
 from servers.model import Server
-from servers.repository import normalize_slug as _normalize_slug, slug_taken as _slug_taken
 from servers.schemas import ServerCreate
 from servers.states import ServerStatus, can_transition
 
@@ -95,6 +95,12 @@ async def activate_server(session: AsyncSession, server: Server) -> Server:
     server.last_heartbeat_at = utcnow()
     await session.flush()
 
+    await queue_event(
+        session,
+        "server.state_changed",
+        server_id=server.id,
+        data={"slug": server.slug, "status": server.status.value},
+    )
     logger.info("server activated slug=%s", server.slug)
     return server
 
@@ -120,6 +126,12 @@ async def deactivate_server(session: AsyncSession, server: Server) -> Server:
     server.status = ServerStatus.INACTIVE
     await session.flush()
 
+    await queue_event(
+        session,
+        "server.state_changed",
+        server_id=server.id,
+        data={"slug": server.slug, "status": server.status.value},
+    )
     logger.info("server deactivated slug=%s", server.slug)
     return server
 
@@ -141,6 +153,12 @@ async def delete_server(session: AsyncSession, server: Server) -> None:
 
     slug = server.slug
     await session.delete(server)
+    await queue_event(
+        session,
+        "server.state_changed",
+        server_id=server.id,
+        data={"slug": slug, "status": ServerStatus.DELETED.value},
+    )
     logger.info("server deleted slug=%s", slug)
 
 

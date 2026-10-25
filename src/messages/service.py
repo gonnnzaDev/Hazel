@@ -17,6 +17,7 @@ from core.api.errors import (
     ServerInactiveError,
     ValidationDomainError,
 )
+from events.outbox import queue_event
 from identity.model import Member
 from messages import repository
 from messages.model import Message
@@ -191,6 +192,13 @@ async def create_message(
         attachments=list(payload.attachments),
     )
     reads = await _reads(session, [message])
+    await queue_event(
+        session,
+        "message.created",
+        server_id=channel.server_id,
+        channel_id=channel.id,
+        data=reads[0].model_dump(mode="json"),
+    )
     return reads[0]
 
 
@@ -232,7 +240,15 @@ async def edit_message(
     message.edited_at = utcnow()
     await session.flush()
 
-    return await get_message(session, member, channel, message.id)
+    read = await get_message(session, member, channel, message.id)
+    await queue_event(
+        session,
+        "message.updated",
+        server_id=channel.server_id,
+        channel_id=channel.id,
+        data=read.model_dump(mode="json"),
+    )
+    return read
 
 
 async def delete_message(
@@ -258,6 +274,13 @@ async def delete_message(
         )
 
     await repository.soft_delete(session, message, at=utcnow())
+    await queue_event(
+        session,
+        "message.deleted",
+        server_id=channel.server_id,
+        channel_id=channel.id,
+        data={"message_id": str(message.id), "deleted": True},
+    )
     logger.info("message deleted channel=%s id=%s", channel.id, message.id)
 
 
@@ -279,7 +302,15 @@ async def add_reaction(
         )
 
     await repository.add_reaction(session, message, member.id, emoji)
-    return await get_message(session, member, channel, message.id)
+    read = await get_message(session, member, channel, message.id)
+    await queue_event(
+        session,
+        "reaction.added",
+        server_id=channel.server_id,
+        channel_id=channel.id,
+        data=read.model_dump(mode="json"),
+    )
+    return read
 
 
 async def remove_reaction(
@@ -292,4 +323,14 @@ async def remove_reaction(
             code="message_not_found",
             extra={"message_id": str(message_id)},
         )
-    await repository.remove_reaction(session, message, member.id, emoji)
+    removed = await repository.remove_reaction(session, message, member.id, emoji)
+    if not removed:
+        return
+    read = await get_message(session, member, channel, message.id)
+    await queue_event(
+        session,
+        "reaction.removed",
+        server_id=channel.server_id,
+        channel_id=channel.id,
+        data=read.model_dump(mode="json"),
+    )
