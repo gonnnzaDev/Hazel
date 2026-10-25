@@ -7,6 +7,7 @@ import unicodedata
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from channels import repository as channels_repository
 from common.types import RecordId, new_id, utcnow
 from core.api.errors import ConflictError, ServerInactiveError, ValidationDomainError
 from servers.model import Server
@@ -61,6 +62,9 @@ async def create_server(session: AsyncSession, payload: ServerCreate, *, port: i
     )
 
     session.add(server)
+    await session.flush()
+
+    server.channels.append(channels_repository.default_channel())
     await session.flush()
 
     logger.info("server registered slug=%s port=%s", server.slug, port)
