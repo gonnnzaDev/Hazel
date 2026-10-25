@@ -10,7 +10,6 @@ AddressFamily = Literal["ipv4", "ipv6"]
 
 
 class LocalAddress(BaseModel):
-
     host: str
     family: AddressFamily
     private: bool
@@ -45,7 +44,7 @@ def _hostname_addresses() -> list[str]:
 
     try:
         infos = socket.getaddrinfo(hostname, None, proto=socket.IPPROTO_TCP)
-    except (socket.gaierror, OSError):
+    except socket.gaierror, OSError:
         return []
 
     hosts: list[str] = []

@@ -8,7 +8,6 @@ PeerSend = Callable[[dict[str, object]], Awaitable[None]]
 
 @dataclass(slots=True)
 class Peer:
-
     member_id: str
     nickname: str
     display_name: str
@@ -28,7 +27,6 @@ class Peer:
 
 @dataclass(slots=True)
 class Room:
-
     channel_id: str
     peers: dict[str, Peer] = field(default_factory=dict)
 

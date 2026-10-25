@@ -13,7 +13,6 @@ DisplayName = Annotated[str, Field(min_length=1, max_length=64)]
 
 
 class JoinRequest(BaseModel):
-
     nickname: Nickname
     display_name: DisplayName | None = None
 
@@ -34,7 +33,6 @@ class JoinRequest(BaseModel):
 
 
 class MemberRead(BaseModel):
-
     model_config = ConfigDict(from_attributes=True)
 
     id: str
@@ -51,7 +49,6 @@ class MemberRead(BaseModel):
 
 
 class MemberListResponse(BaseModel):
-
     items: list[MemberRead]
     total: int
     limit: int
@@ -59,7 +56,6 @@ class MemberListResponse(BaseModel):
 
 
 class JoinResponse(BaseModel):
-
     token: str
 
     expires_at: datetime | None
@@ -69,7 +65,6 @@ class JoinResponse(BaseModel):
 
 
 class ServerSummary(BaseModel):
-
     model_config = ConfigDict(from_attributes=True)
 
     id: str
@@ -78,13 +73,11 @@ class ServerSummary(BaseModel):
 
 
 class MeResponse(BaseModel):
-
     member: MemberRead
     server: ServerSummary
 
 
 class MeUpdate(BaseModel):
-
     display_name: DisplayName
 
     @field_validator("display_name")
@@ -97,6 +90,5 @@ class MeUpdate(BaseModel):
 
 
 class TokenResponse(BaseModel):
-
     token: str
     expires_at: datetime | None

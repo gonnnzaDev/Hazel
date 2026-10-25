@@ -23,7 +23,6 @@ class ServerBase(BaseModel):
 
 
 class ServerCreate(ServerBase):
-
     owner_nickname: OwnerNickname
     max_members: Annotated[int, Field(default=50, ge=1, le=10_000)]
 
@@ -34,14 +33,12 @@ class ServerCreate(ServerBase):
 
 
 class ServerUpdate(BaseModel):
-
     name: ServerName | None = None
     description: Annotated[str | None, Field(default=None, max_length=1000)]
     max_members: Annotated[int | None, Field(default=None, ge=1, le=10_000)]
 
 
 class ServerRead(ServerBase):
-
     model_config = ConfigDict(from_attributes=True)
 
     id: RecordId
@@ -58,7 +55,6 @@ class ServerRead(ServerBase):
 
 
 class ServerAddress(BaseModel):
-
     model_config = ConfigDict(from_attributes=True)
 
     server_id: RecordId
@@ -93,7 +89,6 @@ class ServerAddress(BaseModel):
 
 
 class ServerListResponse(BaseModel):
-
     items: list[ServerRead]
     total: int
     limit: int

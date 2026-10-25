@@ -56,10 +56,10 @@ def _server_summary(server: object) -> ServerSummary:
 async def join(session: SessionDep, server_id: ServerId, payload: JoinRequest) -> JoinResponse:
     server = await servers_repository.get_server(session, server_id)
     member, token, expires_at = await service.join_server(session, server, payload)
-    queue_event(
+    await queue_event(
         session,
         event_type="member.joined",
-        server_id=str(server.id),
+        server_id=server.id,
         data={"member": _member_read(member).model_dump(mode="json")},
     )
 
@@ -77,11 +77,11 @@ async def join(session: SessionDep, server_id: ServerId, payload: JoinRequest) -
     summary="Leave the server",
 )
 async def leave(member: CurrentMember, session: SessionDep) -> None:
-    server_id = str(member.server_id)
+    server_id = member.server_id
     member_data = _member_read(member).model_dump(mode="json")
     await service.revoke_all_tokens(session, member)
     await service.leave_server(session, member)
-    queue_event(
+    await queue_event(
         session,
         event_type="member.left",
         server_id=server_id,
@@ -178,10 +178,10 @@ async def kick_member(
     target = await repository.get_member_by_nickname(session, server_id, nickname)
     target_data = _member_read(target).model_dump(mode="json")
     await service.kick_member(session, actor, target)
-    queue_event(
+    await queue_event(
         session,
         event_type="member.left",
-        server_id=str(server_id),
+        server_id=server_id,
         data={
             "member": target_data,
             "reason": "kicked",

@@ -6,11 +6,15 @@ import uuid
 from datetime import UTC, datetime
 
 RecordId = uuid.UUID
+
+
 def new_id() -> RecordId:
     return uuid.uuid7()
 
+
 def utcnow() -> datetime:
     return datetime.now(UTC)
+
 
 def ensure_utc(value: datetime | None) -> datetime | None:
     if value is None:

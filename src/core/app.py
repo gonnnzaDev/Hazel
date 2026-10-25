@@ -19,6 +19,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+
 def _base_app(settings: Settings, *, lifespan: object | None) -> FastAPI:
     app = FastAPI(
         title="Hazel",

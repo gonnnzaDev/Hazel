@@ -6,7 +6,6 @@ from calls.model import Peer, Room
 
 
 class RoomStore:
-
     def __init__(self) -> None:
         self._rooms: dict[str, Room] = {}
         self._lock = asyncio.Lock()

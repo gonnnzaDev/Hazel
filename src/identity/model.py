@@ -23,7 +23,6 @@ if TYPE_CHECKING:
 
 
 class Member(Base):
-
     __tablename__ = "members"
 
     id: Mapped[RecordId] = mapped_column(primary_key=True, default=new_id)
@@ -60,7 +59,6 @@ class Member(Base):
 
 
 class MemberToken(Base):
-
     __tablename__ = "member_tokens"
 
     id: Mapped[RecordId] = mapped_column(primary_key=True, default=new_id)

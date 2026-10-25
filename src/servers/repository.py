@@ -9,7 +9,7 @@ from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from common.types import RecordId, new_id, utcnow
+from common.types import RecordId, utcnow
 from core.api.errors import NotFoundError
 from servers.model import Server
 from servers.schemas import ServerUpdate

@@ -49,7 +49,7 @@ packages = [
 # entrypoints
 # ──────────────────────────────────────────────────────────────────────────────
 [project.scripts]
-hazel-api = "core.cli:run"
+hazel-api = "core.run:main"
 
 # ──────────────────────────────────────────────────────────────────────────────
 # pytest
@@ -96,7 +96,6 @@ ignore = [
 # Son CLIs: escriben su progreso en stdout para que el operador lo vea.
 # `logging` acá sumaría configuración sin aportar nada.
 "src/core/wait_for_db.py" = ["T201"]
-"src/core/cli.py" = ["T201"]
 
 [tool.ruff.lint.isort]
 known-first-party = [
