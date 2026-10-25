@@ -18,7 +18,8 @@ API must expose, before the implementation exists.
 - Endpoints hang off `/api/v1`.
 - Everything but `GET` accepts and returns JSON.
 - Errors use `application/problem+json` (RFC 9457).
-- There are no global accounts. **Identity is a nickname inside a server.**
+- There are no global accounts. **Identity is a nickname inside a server**,
+  requested first when joining.
 - WebSocket at `/api/v1/ws`.
 
 ---
@@ -116,8 +117,10 @@ If the machine has no usable address — a container without network, for
 example — it returns `candidates: []` and `recommended: null` instead of
 failing. The client shows a useful message.
 
-**Pending your decision:** do we ask the owner to pick their IP at deploy time,
-or solve it with auto-detection as above?
+**Decision:** the address is detected automatically. The client uses
+`recommended` and lets the owner override it from `candidates` when the machine
+has VPN, Docker or several NICs. If no usable address exists, the client asks
+the owner to type one.
 
 ---
 
@@ -354,39 +357,55 @@ added returns `204` as well.
 | `[x]` | `WS /api/v1/ws?token=<token>` | Event channel. |
 
 Token goes in query string because browsers and several mobile clients don't
-allow custom headers on the WebSocket handshake.
+allow custom headers on the WebSocket handshake. The socket is authenticated
+once at connect time. The token must belong to an **active** server; invalid,
+expired, foreign-server and inactive-server tokens close with code `1008`.
 
-### Server events
+Every event uses the same envelope. `channel_id` is present only for
+channel-scoped events:
 
 ```json
 { "type": "message.created", "server_id": "...", "channel_id": "...", "data": { } }
 ```
 
+Server-scoped events go to every socket connected to that server.
+Channel-scoped events go only to sockets that have subscribed to the channel.
+
+### Server events
+
 | Event | When |
 |---|---|
-| `message.created` | Someone wrote. |
-| `message.updated` | Someone edited. |
-| `message.deleted` | Someone deleted. |
-| `reaction.added` | Someone reacted. |
-| `reaction.removed` | Someone removed a reaction. |
-| `presence.update` | Someone joined or left. |
-| `typing.start` | Someone is typing. |
+| `connection.ready` | The socket is authenticated. Data: `member`, `server`. |
+| `message.created` | Someone wrote in a subscribed channel. |
+| `presence.update` | A member's first socket connected or last socket disconnected. |
+| `typing.start` | A subscribed member is typing. |
 | `member.joined` | Someone joined the server. |
-| `member.left` | Someone left. |
-| `server.updated` | Name, channels, etc. changed. |
-| `server.state_changed` | Server changed state. |
-| `node.state_changed` | Node opened or closed the port. |
+| `member.left` | Someone left or was kicked. |
+| `server.updated` | Name, description or limits changed. |
+| `server.state_changed` | Server was created, activated, deactivated or deleted. |
+| `channel.subscribed` | The server accepted a `channel.subscribe` request. |
+| `channel.unsubscribed` | The channel subscription was removed. |
+| `heartbeat` | Acknowledgement of a client heartbeat. Data: `server_time`. |
+| `error` | A client event was invalid. Data: `code`, `detail`. |
+
+Planned, not emitted yet because their HTTP endpoints are not implemented:
+`message.updated`, `message.deleted`, `reaction.added`, `reaction.removed`,
+`node.state_changed`.
 
 ### Client events
 
 ```json
-{ "type": "typing.start", "channel_id": "..." }
 { "type": "channel.subscribe", "channel_id": "..." }
+{ "type": "channel.unsubscribe", "channel_id": "..." }
+{ "type": "typing.start", "channel_id": "..." }
 { "type": "heartbeat" }
 ```
 
-Server ignores unknown events instead of dropping the connection. An old mobile
-client that doesn't know a new event doesn't crash.
+A client must send `channel.subscribe` before it receives channel-scoped
+events. `typing.start` is only accepted for subscribed channels and is
+broadcast to the other subscribers. The server ignores unknown event types
+instead of dropping the connection, so an old mobile client that doesn't know
+a new event doesn't crash.
 
 ### Realtime rules (decided)
 
@@ -462,7 +481,9 @@ don't type the IP by hand.
 | `[ ]` | `GET /api/v1/servers/{server_id}/events` | Audit. |
 
 This isn't secondary: it's what gives the owner confidence their data is on
-their PC and recoverable.
+their PC and recoverable. Backups must cover the last 3 days of changes; the
+storage mechanism and the endpoint contract are still to be implemented (see
+`architecture.md` §9).
 
 ---
 
@@ -521,16 +542,17 @@ types from OpenAPI without effort.
 These are product questions, not implementation ones. Left open until you
 resolve them:
 
-1. **Kafka on the user's PC.** You asked Kafka for chat, but it's a heavy
-   dependency for a desktop process. Embedded Kafka, external Kafka, or a bus
-   with two implementations?
+1. ~~Kafka on the user's PC.~~ **Resolved:** every PC runs a complete Kafka.
+   There is no embedded mode or local fallback. See `architecture.md` §4.
 2. ~~Node with N servers vs node = 1 server.~~ **Resolved:** node holds N
-   servers. See section 0. If you want the literal reading, it's a refactor.
-3. ~~Shareable IP resolution.~~ **Partial:** API returns all candidates and
-   client picks. Still needs how the PC client shows it.
+   servers. See section 0.
+3. ~~Shareable IP resolution.~~ **Resolved:** the node detects its addresses
+   and returns `recommended` plus `candidates`; the client uses the
+   recommendation and lets the owner override it.
 4. **Server discovery.** See section 8.
 5. **Where files live.** See section 9.
 6. **Custom roles.** Needed, or are three roles enough for v1?
-7. **Personal name vs nickname.** You said the user can have a personal name for
-   personal use, but nickname was the only thing to implement. Is that a new
-   entity or the same `display_name`?
+7. ~~Personal name vs nickname.~~ **Resolved:** nickname is per server and is
+   requested first on join. There is no global personal name for now.
+8. **Backup mechanism.** The 3-day window is decided; whether it is WAL/PITR
+   or scheduled dumps is still open.
