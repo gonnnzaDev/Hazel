@@ -1,39 +1,84 @@
+"""Outbox: application events ride the request transaction and fan out after commit.
+
+The bus is in-process per decision; publishing stays behind this seam so a
+Kafka or PostgreSQL transport can replace it without touching views. Delivery
+is at-least-once: an unclean shutdown can replay an event that was fanned out
+but not yet deleted.
+"""
+
 from __future__ import annotations
 
 import logging
 from typing import Any
 
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from events.bus import Event, build_event, event_bus
+from common.types import RecordId, new_id
+from events.bus import bus, envelope
+from events.model import OutboxEvent
 
 logger = logging.getLogger(__name__)
 
-PENDING_EVENTS_KEY = "hazel.pending_events"
+DRAIN_BATCH = 200
 
 
-def queue_event(
+async def queue_event(
     session: AsyncSession,
-    *,
     event_type: str,
-    server_id: str,
-    data: dict[str, Any],
-    channel_id: str | None = None,
+    *,
+    server_id: RecordId,
+    channel_id: RecordId | None = None,
+    data: dict[str, Any] | None = None,
 ) -> None:
-    event = build_event(
-        event_type,
-        server_id,
-        data,
-        channel_id=channel_id,
+    """Insert the event in the same transaction as the change itself."""
+    session.add(
+        OutboxEvent(
+            id=new_id(),
+            event_type=event_type,
+            server_id=server_id,
+            channel_id=channel_id,
+            data=data or {},
+        )
     )
-    pending: list[Event] = session.info.setdefault(PENDING_EVENTS_KEY, [])
-    pending.append(event)
 
 
-async def dispatch_pending_events(session: AsyncSession) -> None:
-    pending: list[Event] = session.info.pop(PENDING_EVENTS_KEY, [])
-    for event in pending:
-        try:
-            await event_bus.publish(event)
-        except Exception:
-            logger.exception("could not publish event type=%s", event["type"])
+async def drain_pending(session: AsyncSession) -> None:
+    """Fan out committed events to this process' bus, then delete the rows."""
+    rows = list(
+        (
+            await session.execute(
+                select(OutboxEvent)
+                .order_by(OutboxEvent.id)
+                .limit(DRAIN_BATCH)
+                .with_for_update(skip_locked=True)
+            )
+        ).scalars()
+    )
+    if not rows:
+        return
+
+    for row in rows:
+        bus.publish(
+            server_id=row.server_id,
+            channel_id=row.channel_id,
+            event=envelope(
+                row.event_type,
+                server_id=row.server_id,
+                channel_id=row.channel_id,
+                data=dict(row.data or {}),
+            ),
+        )
+
+    await session.execute(delete(OutboxEvent).where(OutboxEvent.id.in_([row.id for row in rows])))
+    await session.flush()
+
+
+async def publish_pending(session: AsyncSession) -> None:
+    """Post-commit hook: fan out this process' queued events, keeping errors soft."""
+    try:
+        await drain_pending(session)
+        await session.commit()
+    except Exception:
+        logger.exception("outbox drain failed; rows stay queued for the next drain")
+        await session.rollback()

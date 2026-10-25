@@ -7,6 +7,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from config.app_config import AppSection
 from config.call_config import CallSection
 from config.db_config import DbSection
+from config.events_config import EventsSection
 from config.http_config import HttpSection
 from config.kafka_config import KafkaSection
 from config.limits_config import LimitsSection
@@ -22,6 +23,7 @@ class Settings(
     KafkaSection,
     LimitsSection,
     CallSection,
+    EventsSection,
 ):
     model_config = SettingsConfigDict(
         env_file=REPO_ROOT / ".env",

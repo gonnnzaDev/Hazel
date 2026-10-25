@@ -354,7 +354,7 @@ added returns `204` as well.
 
 | Method | Route | What it does |
 |---|---|---|
-| `[x]` | `WS /api/v1/ws?token=<token>` | General event channel. |
+| `[x]` | `WS /api/v1/ws?token=<token>` | Event channel. |
 
 Token goes in query string because browsers and several mobile clients don't
 allow custom headers on the WebSocket handshake. The socket is authenticated
@@ -406,6 +406,36 @@ events. `typing.start` is only accepted for subscribed channels and is
 broadcast to the other subscribers. The server ignores unknown event types
 instead of dropping the connection, so an old mobile client that doesn't know
 a new event doesn't crash.
+
+### Realtime rules (decided)
+
+- **Presence is the socket line.** Connecting a socket marks the member online;
+  closing every socket of a member marks it offline. Each transition is one
+  server-wide `presence.update`; a member with two open sockets transitions
+  once (no per-socket noise). No heartbeats update presence, only the traffic
+  line does.
+- **`typing.start` reaches only the channel's subscribers** and requires the
+  sender to be subscribed too; it is never persisted. One socket admits up to
+  `HAZEL_TYPING_RATE_PER_MINUTE` (default 15) typing events per minute; extra
+  ones are ignored silently.
+- **Heartbeat answers `{"type": "heartbeat"}`.** A socket that sends nothing
+  for `HAZEL_WEBSOCKET_IDLE_TIMEOUT_SECONDS` (default 300) is closed cleanly.
+- **Per-socket queues are bounded** (`HAZEL_WEBSOCKET_QUEUE_SIZE`, default
+  128). A consumer too slow to drain its queue is closed instead of eating
+  memory or blocking the bus.
+- **`message.*` and `reaction.*` payloads carry the full message** in the same
+  shape as `GET /messages/{id}` (`message.deleted` carries only the id), so a
+  client can refresh without a second round trip.
+- **Delivery rides the outbox**: events are written in the same transaction as
+  the change and fan out after the commit, at-least-once. There is no replay for
+  disconnected clients in v1 (no retained history of events).
+- **`server.state_changed`** is emitted from the servers service lifecycle
+  (activate / deactivate / delete). **`server.updated`** and
+  **`node.state_changed`** have no emission point yet (`[~]`) until the
+  server-updatable endpoint and the supervisor hooks land.
+- **The bus is in-process** (per-process). It serves the process where the
+  change happened and where the socket connects; cross-process fan-out between
+  the node and group processes stays open for a later bus transport.
 
 ---
 
