@@ -1,288 +1,183 @@
+"""WS /api/v1/ws: the general realtime stream, token by query param."""
+
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import logging
-from contextlib import suppress
-from datetime import UTC, datetime
+import uuid
+from collections.abc import Mapping
 from typing import Any
 
 from fastapi import APIRouter, WebSocket
 from starlette.websockets import WebSocketDisconnect
 
-from core.api.errors import DomainError
-from events import service
-from events.bus import Event, Subscription, build_event, event_bus
-from events.service import ConnectionIdentity
-from identity.deps import query_token
+from channels.model import Channel
+from common.types import utcnow
+from config.bdd_config.bdd_config import get_session_maker
+from config.conf import get_settings
+from core.api.errors import AuthenticationError
+from events.bus import Subscription, TypingWindow, bus, enqueue_direct, envelope
+from identity.service import authenticate
+from servers.model import Server
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-MAX_CLIENT_EVENT_BYTES = 8_192
+
+async def _writer(websocket: WebSocket, sub: Subscription) -> None:
+    """Single sender: everything a socket emits goes through its queue."""
+    while not sub.closed:
+        try:
+            event = await asyncio.wait_for(sub.queue.get(), timeout=0.5)
+        except TimeoutError:
+            continue
+        try:
+            await websocket.send_text(json.dumps(event))
+        except Exception:
+            return
 
 
-def _close_reason(exc: Exception) -> str:
-    code = getattr(exc, "code", None)
-    reason = code if isinstance(code, str) else "unauthorized"
-    return reason[:120]
+def _payload_text(raw: Mapping[str, Any]) -> str | None:
+    text = raw.get("text")
+    return text if isinstance(text, str) else None
 
 
-def _member_payload(identity: ConnectionIdentity) -> dict[str, Any]:
-    return {
-        "id": identity.member_id,
-        "nickname": identity.nickname,
-        "display_name": identity.display_name,
-    }
-
-
-def _server_payload(identity: ConnectionIdentity) -> dict[str, Any]:
-    return {
-        "id": identity.server_id,
-        "slug": identity.server_slug,
-        "name": identity.server_name,
-    }
-
-
-def _ready_event(identity: ConnectionIdentity) -> Event:
-    return build_event(
-        "connection.ready",
-        identity.server_id,
-        {
-            "member": _member_payload(identity),
-            "server": _server_payload(identity),
-        },
-    )
-
-
-def _presence_event(identity: ConnectionIdentity, *, online: bool) -> Event:
-    return build_event(
-        "presence.update",
-        identity.server_id,
-        {
-            "member": _member_payload(identity),
-            "online": online,
-        },
-    )
-
-
-def _error_event(server_id: str, code: str, detail: str) -> Event:
-    return build_event(
-        "error",
-        server_id,
-        {"code": code, "detail": detail},
-    )
-
-
-async def _handle_client_event(subscription: Subscription, raw: str) -> None:
-    try:
-        message = json.loads(raw)
-    except TypeError, ValueError:
-        subscription.offer(
-            _error_event(subscription.server_id, "invalid_json", "The event is not valid JSON.")
-        )
-        return
-
-    if not isinstance(message, dict):
-        subscription.offer(
-            _error_event(
-                subscription.server_id,
-                "invalid_event",
-                "The event must be a JSON object.",
-            )
-        )
-        return
-
-    kind = message.get("type")
-    if kind == "channel.subscribe":
-        await _subscribe_channel(subscription, message)
-    elif kind == "channel.unsubscribe":
-        _unsubscribe_channel(subscription, message)
-    elif kind == "typing.start":
-        await _typing_start(subscription, message)
-    elif kind == "heartbeat":
-        subscription.offer(
-            build_event(
-                "heartbeat",
-                subscription.server_id,
-                {"server_time": datetime.now(UTC).isoformat()},
-            )
-        )
-
-
-def _channel_id(message: dict[str, Any]) -> str | None:
-    value = message.get("channel_id")
-    if not isinstance(value, str):
+def _channel_id_of(payload: dict[str, Any]) -> uuid.UUID | None:
+    raw = payload.get("channel_id")
+    if not isinstance(raw, str):
         return None
-    return value.strip() or None
-
-
-async def _subscribe_channel(subscription: Subscription, message: dict[str, Any]) -> None:
-    channel_id = _channel_id(message)
-    if channel_id is None:
-        subscription.offer(
-            _error_event(
-                subscription.server_id,
-                "invalid_channel_id",
-                "A valid channel_id is required.",
-            )
-        )
-        return
-
-    if not await service.channel_exists(subscription.server_id, channel_id):
-        subscription.offer(
-            _error_event(
-                subscription.server_id,
-                "channel_not_found",
-                "That channel does not exist on this server.",
-            )
-        )
-        return
-
-    event_bus.subscribe_channel(subscription, channel_id)
-    subscription.offer(
-        build_event(
-            "channel.subscribed",
-            subscription.server_id,
-            {},
-            channel_id=channel_id,
-        )
-    )
-
-
-def _unsubscribe_channel(subscription: Subscription, message: dict[str, Any]) -> None:
-    channel_id = _channel_id(message)
-    if channel_id is None:
-        subscription.offer(
-            _error_event(
-                subscription.server_id,
-                "invalid_channel_id",
-                "A valid channel_id is required.",
-            )
-        )
-        return
-
-    event_bus.unsubscribe_channel(subscription, channel_id)
-    subscription.offer(
-        build_event(
-            "channel.unsubscribed",
-            subscription.server_id,
-            {"channel_id": channel_id},
-        )
-    )
-
-
-async def _typing_start(subscription: Subscription, message: dict[str, Any]) -> None:
-    channel_id = _channel_id(message)
-    if channel_id is None:
-        subscription.offer(
-            _error_event(
-                subscription.server_id,
-                "invalid_channel_id",
-                "A valid channel_id is required.",
-            )
-        )
-        return
-
-    if channel_id not in subscription.channels:
-        subscription.offer(
-            _error_event(
-                subscription.server_id,
-                "not_subscribed",
-                "Subscribe to the channel before sending typing events.",
-            )
-        )
-        return
-
-    await event_bus.publish(
-        build_event(
-            "typing.start",
-            subscription.server_id,
-            {
-                "member": {
-                    "id": subscription.member_id,
-                    "nickname": subscription.nickname,
-                    "display_name": subscription.display_name,
-                }
-            },
-            channel_id=channel_id,
-        ),
-        exclude=subscription,
-    )
-
-
-async def _writer(websocket: WebSocket, subscription: Subscription) -> None:
     try:
-        while True:
-            event = await subscription.queue.get()
-            if subscription.overflowed:
-                await websocket.close(code=1011, reason="slow_consumer")
-                return
-            await websocket.send_json(event)
-    except asyncio.CancelledError:
-        raise
-    except Exception:
-        logger.debug("websocket writer stopped for member=%s", subscription.member_id)
-        with suppress(Exception):
-            await websocket.close(code=1011, reason="send_failed")
+        return uuid.UUID(raw)
+    except ValueError:
+        return None
 
 
 @router.websocket("/ws")
-async def websocket_events(websocket: WebSocket) -> None:
+async def ws_events(websocket: WebSocket) -> None:
     await websocket.accept()
 
-    token = query_token(websocket.query_params.get("token"))
-    try:
-        identity = await service.authenticate_connection(token)
-    except DomainError as exc:
-        await websocket.close(code=1008, reason=_close_reason(exc))
-        return
-    except Exception:
-        logger.exception("websocket authentication failed")
-        await websocket.close(code=1011, reason="internal_error")
-        return
+    settings = get_settings()
+    bus.configure(queue_size=settings.websocket_queue_size)
 
-    subscription, first_connection = event_bus.subscribe(
-        server_id=identity.server_id,
-        member_id=identity.member_id,
-        nickname=identity.nickname,
-        display_name=identity.display_name,
-    )
-    subscription.offer(_ready_event(identity))
-
-    writer = asyncio.create_task(_writer(websocket, subscription))
-
-    if first_connection:
+    async with get_session_maker()() as session:
         try:
-            await service.set_presence(identity.member_id, online=True)
-        except Exception:
-            logger.exception("could not mark member online member=%s", identity.member_id)
-        else:
-            await event_bus.publish(_presence_event(identity, online=True))
+            member = await authenticate(session, websocket.query_params.get("token") or "")
+        except AuthenticationError:
+            logger.info("ws rejected: bad token")
+            await websocket.close(code=1008, reason="unauthenticated")
+            return
 
-    try:
-        while True:
-            raw = await websocket.receive_text()
-            if len(raw.encode("utf-8")) > MAX_CLIENT_EVENT_BYTES:
-                await websocket.close(code=1009, reason="event_too_large")
-                break
-            await _handle_client_event(subscription, raw)
-    except WebSocketDisconnect:
-        pass
-    finally:
-        writer.cancel()
-        with suppress(asyncio.CancelledError):
-            await writer
+        server = await session.get(Server, member.server_id)
+        if server is None or not server.status.accepts_traffic:
+            logger.info("ws rejected member=%s: server down", member.id)
+            await websocket.close(code=1008, reason="server_inactive")
+            return
 
-        last_connection = event_bus.unsubscribe(subscription)
-        if last_connection:
+        sub, first_socket = bus.subscribe(
+            server_id=member.server_id,
+            member_id=member.id,
+            nickname=member.nickname,
+            display_name=member.display_name,
+        )
+        member.is_online = True
+        member.last_seen_at = utcnow()
+        if first_socket:
+            bus.publish(
+                server_id=member.server_id,
+                event=envelope(
+                    "presence.update",
+                    server_id=member.server_id,
+                    data={
+                        "nickname": member.nickname,
+                        "display_name": member.display_name,
+                        "is_online": True,
+                    },
+                ),
+            )
+        await session.commit()
+
+        typing = TypingWindow()
+        typing_limit = settings.typing_rate_per_minute
+        idle_timeout = float(settings.websocket_idle_timeout_seconds)
+        sender = asyncio.create_task(_writer(websocket, sub))
+
+        try:
+            while True:
+                try:
+                    raw = await asyncio.wait_for(websocket.receive(), timeout=idle_timeout)
+                except TimeoutError:
+                    await websocket.close(code=1000, reason="idle")
+                    break
+                except WebSocketDisconnect:
+                    break
+
+                if raw.get("type") == "websocket.disconnect":
+                    break
+
+                text = _payload_text(raw)
+                if text is None:
+                    continue
+
+                try:
+                    payload = json.loads(text)
+                except json.JSONDecodeError:
+                    continue
+                if not isinstance(payload, dict):
+                    continue
+
+                kind = payload.get("type")
+                if kind == "heartbeat":
+                    enqueue_direct(sub, {"type": "heartbeat"})
+                elif kind == "channel.subscribe":
+                    channel_id = _channel_id_of(payload)
+                    if channel_id is None:
+                        continue
+                    channel = await session.get(Channel, channel_id)
+                    if channel is not None and channel.server_id == member.server_id:
+                        bus.subscribe_channel(sub, channel.id)
+                elif kind == "typing.start":
+                    channel_id = _channel_id_of(payload)
+                    if channel_id is None or channel_id not in sub.channels:
+                        continue
+                    if not typing.admit(asyncio.get_running_loop().time(), limit=typing_limit):
+                        continue
+                    bus.publish(
+                        server_id=member.server_id,
+                        channel_id=channel_id,
+                        event=envelope(
+                            "typing.start",
+                            server_id=member.server_id,
+                            channel_id=channel_id,
+                            data={"nickname": member.nickname},
+                        ),
+                    )
+                # unknown event types are ignored, per contract
+        except WebSocketDisconnect:
+            pass
+        finally:
+            sender.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await sender
             try:
-                await service.set_presence(identity.member_id, online=False)
+                was_last = bus.unsubscribe(sub)
+                if was_last:
+                    bus.publish(
+                        server_id=member.server_id,
+                        event=envelope(
+                            "presence.update",
+                            server_id=member.server_id,
+                            data={
+                                "nickname": member.nickname,
+                                "display_name": member.display_name,
+                                "is_online": False,
+                            },
+                        ),
+                    )
+                member.is_online = False
+                member.last_seen_at = utcnow()
+                await session.commit()
             except Exception:
-                logger.exception("could not mark member offline member=%s", identity.member_id)
-            finally:
-                await event_bus.publish(_presence_event(identity, online=False))
-
-        with suppress(Exception):
-            await websocket.close()
+                logger.exception("failed to mark member=%s offline", member.id)

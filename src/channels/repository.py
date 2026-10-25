@@ -2,59 +2,71 @@ from __future__ import annotations
 
 import logging
 
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from channels.model import Channel, ChannelKind
-from channels.schemas import ChannelCreate
-from common.types import new_id
-from core.api.errors import ValidationDomainError
+from common.types import RecordId, new_id
+from core.api.errors import NotFoundError
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_CHANNEL_NAME = "general"
+DEFAULT_CHANNEL_POSITION = 0
 
 
-def build_channels(payload_channels: list[ChannelCreate]) -> list[Channel]:
-    channels: list[Channel] = []
-    for raw in payload_channels:
-        try:
-            kind = ChannelKind(raw.kind)
-        except ValueError:
-            raise ValidationDomainError(
-                f"'{raw.kind}' is not a valid channel kind.",
-                code="invalid_channel_kind",
-                extra={"allowed": [k.value for k in ChannelKind]},
-            ) from None
-        channels.append(
-            Channel(
-                id=new_id(),
-                name=raw.name.strip(),
-                kind=kind,
-                topic=raw.topic,
-                position=raw.position,
-                is_default=raw.is_default,
-            )
+def default_channel() -> Channel:
+    return Channel(
+        id=new_id(),
+        name=DEFAULT_CHANNEL_NAME,
+        kind=ChannelKind.TEXT,
+        topic=None,
+        position=DEFAULT_CHANNEL_POSITION,
+        is_default=True,
+    )
+
+
+async def list_for_server(session: AsyncSession, server_id: RecordId) -> list[Channel]:
+    stmt = (
+        select(Channel)
+        .where(Channel.server_id == server_id)
+        .order_by(Channel.position, Channel.name)
+    )
+    return list((await session.execute(stmt)).scalars().all())
+
+
+async def get_for_server(
+    session: AsyncSession, server_id: RecordId, channel_id: RecordId
+) -> Channel:
+    stmt = select(Channel).where(Channel.id == channel_id, Channel.server_id == server_id)
+    channel = (await session.execute(stmt)).scalar_one_or_none()
+    if channel is None:
+        raise NotFoundError(
+            "That channel does not exist in this server.",
+            code="channel_not_found",
+            extra={"channel_id": str(channel_id), "server_id": str(server_id)},
         )
-    return channels
+    return channel
 
 
-def ensure_default_channel(channels: list[Channel]) -> None:
-    if not channels:
-        channels.append(
-            Channel(
-                id=new_id(),
-                name=DEFAULT_CHANNEL_NAME,
-                kind=ChannelKind.TEXT,
-                is_default=True,
-            )
-        )
-        return
+async def name_taken(
+    session: AsyncSession,
+    server_id: RecordId,
+    name: str,
+    *,
+    exclude: RecordId | None = None,
+) -> bool:
+    stmt = (
+        select(func.count())
+        .select_from(Channel)
+        .where(Channel.server_id == server_id, Channel.name == name)
+    )
+    if exclude is not None:
+        stmt = stmt.where(Channel.id != exclude)
+    return (await session.execute(stmt)).scalar_one() > 0
 
-    defaults = [c for c in channels if c.is_default]
-    if len(defaults) > 1:
-        raise ValidationDomainError(
-            "A server cannot have more than one default channel.",
-            code="multiple_default_channels",
-        )
-    if not defaults:
-        channels[0].is_default = True
+
+async def next_position(session: AsyncSession, server_id: RecordId) -> int:
+    stmt = select(func.max(Channel.position)).where(Channel.server_id == server_id)
+    max_position = (await session.execute(stmt)).scalar_one_or_none()
+    return (max_position + 1) if max_position is not None else DEFAULT_CHANNEL_POSITION + 1
