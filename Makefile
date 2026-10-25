@@ -39,7 +39,7 @@ stack-logs: ## Node logs
 	docker compose logs -f api
 
 api: ## Start the API with reload
-	uv run python -m core --reload node
+	uv run python -m core node
 
 migrate: ## Apply migrations
 	uv run alembic upgrade head
