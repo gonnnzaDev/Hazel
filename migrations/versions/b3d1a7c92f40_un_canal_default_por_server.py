@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 import sqlalchemy as sa
+from alembic import context as alembic_context
 from alembic import op
 
 revision: str = "b3d1a7c92f40"
@@ -12,6 +13,9 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
+    if alembic_context.is_offline_mode:
+        return
+
     conn = op.get_bind()
     duplicate_servers = conn.execute(
         sa.text(
