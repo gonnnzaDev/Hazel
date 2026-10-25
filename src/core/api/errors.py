@@ -11,7 +11,6 @@ PROBLEM_CONTENT_TYPE = "application/problem+json"
 
 
 class DomainError(Exception):
-
     status_code: int = 400
     code: str = "domain_error"
     title: str = "Domain error"
@@ -40,14 +39,12 @@ class NotFoundError(DomainError):
 
 
 class ConflictError(DomainError):
-
     status_code = 409
     code = "conflict"
     title = "Conflict"
 
 
 class ValidationDomainError(DomainError):
-
     status_code = 422
     code = "domain_validation_error"
     title = "Invalid data"
@@ -66,10 +63,21 @@ class PermissionDeniedError(DomainError):
 
 
 class ServerInactiveError(DomainError):
-
     status_code = 409
     code = "server_inactive"
     title = "Server inactive"
+
+
+class MessageTooLargeError(DomainError):
+    status_code = 413
+    code = "message_too_large"
+    title = "Message too large"
+
+
+class RateLimitError(DomainError):
+    status_code = 429
+    code = "rate_limited"
+    title = "Rate limited"
 
 
 def problem(
