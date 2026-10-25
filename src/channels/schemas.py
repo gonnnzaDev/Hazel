@@ -4,14 +4,14 @@ from typing import Annotated
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from channels.model import ChannelKind
 from common.types import RecordId
 
 
 class ChannelBase(BaseModel):
     name: Annotated[str, Field(min_length=1, max_length=64)]
-    kind: str = "text"
+    kind: ChannelKind = ChannelKind.TEXT
     topic: Annotated[str | None, Field(default=None, max_length=255)]
-    position: int = Field(default=0, ge=0)
 
     @field_validator("name")
     @classmethod
@@ -23,20 +23,32 @@ class ChannelBase(BaseModel):
 
 
 class ChannelCreate(ChannelBase):
-    is_default: bool = False
+    position: Annotated[int | None, Field(default=None, ge=0)]
 
-    @field_validator("kind", mode="after")
+
+class ChannelUpdate(BaseModel):
+    name: Annotated[str | None, Field(default=None, min_length=1, max_length=64)]
+    topic: Annotated[str | None, Field(default=None, max_length=255)]
+    position: Annotated[int | None, Field(default=None, ge=0)]
+
+    @field_validator("name")
     @classmethod
-    def validar_kind(cls, value):
-        if value not in ["text", "voice"]:
-            raise ValueError(f"'{value}' is not a valid kind. Use 'text' or 'voice'.")
-        return value
+    def _valid_name(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("channel name cannot be empty")
+        return normalized
 
 
-class ChannelRead(ChannelBase):
+class ChannelRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: RecordId
     server_id: RecordId
+    name: str
+    kind: ChannelKind
+    topic: str | None
+    position: int
     is_default: bool
-    live_room_id: str | None = None
