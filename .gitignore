@@ -57,3 +57,5 @@ run/
 
 # ─── Documentación generada ────────────────────────────────────────────────────
 site/
+# Instrucciones locales para agentes IA (no se commitean)
+AGENTS.md
