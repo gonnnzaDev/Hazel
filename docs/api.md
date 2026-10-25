@@ -285,22 +285,21 @@ Guaranteed by DB constraint, not just code.
 
 | Method | Route | What it does |
 |---|---|---|
-| `[ ]` | `POST /api/v1/channels/{channel_id}/messages` | Publish. |
-| `[ ]` | `GET /api/v1/channels/{channel_id}/messages` | Paginated history. |
-| `[ ]` | `GET /api/v1/channels/{channel_id}/messages/{message_id}` | See one. |
-| `[ ]` | `PATCH /api/v1/channels/{channel_id}/messages/{message_id}` | Edit. |
-| `[ ]` | `DELETE /api/v1/channels/{channel_id}/messages/{message_id}` | Delete. |
-| `[ ]` | `POST /api/v1/channels/{channel_id}/messages/{message_id}/reactions` | React. |
-| `[ ]` | `DELETE /api/v1/channels/{channel_id}/messages/{message_id}/reactions/{emoji}` | Remove reaction. |
+| `[x]` | `POST /api/v1/channels/{channel_id}/messages` | Publish. |
+| `[x]` | `GET /api/v1/channels/{channel_id}/messages` | Paginated history. |
+| `[x]` | `GET /api/v1/channels/{channel_id}/messages/{message_id}` | See one. |
+| `[x]` | `PATCH /api/v1/channels/{channel_id}/messages/{message_id}` | Edit. |
+| `[x]` | `DELETE /api/v1/channels/{channel_id}/messages/{message_id}` | Delete. |
+| `[x]` | `POST /api/v1/channels/{channel_id}/messages/{message_id}/reactions` | React. |
+| `[x]` | `DELETE /api/v1/channels/{channel_id}/messages/{message_id}/reactions/{emoji}` | Remove reaction. |
 
-### Pagination
+### History pagination
 
-Cursor by `message_id`, which is UUID v7, so id order **is** chronological
-order. No extra index or `created_at` field needed for sorting.
-
-```http
-GET /api/v1/channels/01a1.../messages?limit=50&before=01a1...f3e2
-```
+Cursor navigation: `GET /api/v1/channels/01a1.../messages?limit=50&before=01a1...f3e2`.
+Cursors use `message_id`, which is UUID v7, so id order **is** chronological
+order; no extra index or `created_at` column is needed for sorting. The
+response carries `{ items, limit, next_cursor }` and `next_cursor` is what you
+pass back as `before`.
 
 ### Publishing a message
 
@@ -327,7 +326,27 @@ Authorization: Bearer <token>
 
 **Limits:** 4000 bytes per message, 20 messages per minute per nickname. Rate
 limit is per nickname, not per IP: on a local network everyone can sit behind
-the same router and cutting service wouldn't be fair.
+the same router and cutting service wouldn't be fair. Both limits live in
+`config/limits_config.py`.
+
+**History pagination** returns `{ items, limit, next_cursor }`. `next_cursor`
+is the id of the oldest item; pass it as `before` on the next page. `null`
+means the history ends there.
+
+**Deletion is logical.** A deleted message keeps its id and author but
+exposes `content: null` and `deleted: true`. Replying to or reacting on a
+deleted message returns `409 message_deleted`.
+
+**Ownership rules** (decided): only the author edits a message; the author or
+an admin deletes it. Deleting is soft (`deleted_at`); history stays readable.
+
+**Reactions** are free-form (any emoji up to 64 chars), one per member per
+emoji. `POST` is idempotent: reacting twice returns the message unchanged.
+`DELETE /reactions/{emoji}` removes *your* reaction; removing one you never
+added returns `204` as well.
+
+**Attachments** are reserved: the field exists and must be empty
+(`attachments: []`) until the files feature fills it.
 
 ---
 
