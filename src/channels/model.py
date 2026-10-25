@@ -21,14 +21,12 @@ if TYPE_CHECKING:
 
 
 class ChannelKind(StrEnum):
-
     TEXT = "text"
 
     VOICE = "voice"
 
 
 class Channel(Base):
-
     __tablename__ = "channels"
 
     id: Mapped[RecordId] = mapped_column(primary_key=True, default=new_id)

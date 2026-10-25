@@ -262,15 +262,19 @@ Custom roles come later. The permission model stays open for you to define.
 
 | Method | Route | What it does |
 |---|---|---|
-| `[ ]` | `POST /api/v1/servers/{server_id}/channels` | Create channel. |
-| `[ ]` | `GET /api/v1/servers/{server_id}/channels` | List channels. |
-| `[ ]` | `GET /api/v1/servers/{server_id}/channels/{channel_id}` | See a channel. |
-| `[ ]` | `PATCH /api/v1/servers/{server_id}/channels/{channel_id}` | Edit. |
-| `[ ]` | `DELETE /api/v1/servers/{server_id}/channels/{channel_id}` | Delete. |
-| `[ ]` | `POST /api/v1/servers/{server_id}/channels/{channel_id}/join` | Join channel (open socket). |
+| `[x]` | `POST /api/v1/servers/{server_id}/channels` | Create channel. |
+| `[x]` | `GET /api/v1/servers/{server_id}/channels` | List channels. |
+| `[x]` | `GET /api/v1/servers/{server_id}/channels/{channel_id}` | See a channel. |
+| `[x]` | `PATCH /api/v1/servers/{server_id}/channels/{channel_id}` | Edit. |
+| `[x]` | `DELETE /api/v1/servers/{server_id}/channels/{channel_id}` | Delete. |
+| `[~]` | `POST /api/v1/servers/{server_id}/channels/{channel_id}/join` | Join channel (open socket). |
 
 Each server has exactly one `is_default` channel, where people land on join.
 Guaranteed by DB constraint, not just code.
+
+> The `join` endpoint validates that the member can reach the channel of an
+> active server and returns the channel; attaching a live socket to the event
+> stream lands with the realtime feature.
 
 ---
 
