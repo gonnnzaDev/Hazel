@@ -121,7 +121,21 @@ async def leave_server(session: AsyncSession, member: Member) -> None:
     )
 
 
+async def revoke_token(session: AsyncSession, raw_token: str) -> None:
+    await repository.revoke_token(session, raw_token)
+
+
+async def revoke_all_tokens(session: AsyncSession, member: Member) -> int:
+    return await repository.revoke_all_tokens(session, member)
+
+
 async def kick_member(session: AsyncSession, actor: Member, target: Member) -> None:
+    if actor.server_id != target.server_id:
+        raise PermissionDeniedError(
+            "You cannot manage members of another server.",
+            code="wrong_server",
+        )
+
     if not actor.role_enum.can_administer:
         raise PermissionDeniedError(
             "You must be an administrator to kick someone.",
@@ -167,6 +181,12 @@ async def kick_member(session: AsyncSession, actor: Member, target: Member) -> N
 
 
 async def set_role(session: AsyncSession, actor: Member, target: Member, role: Role) -> Member:
+    if actor.server_id != target.server_id:
+        raise PermissionDeniedError(
+            "You cannot manage members of another server.",
+            code="wrong_server",
+        )
+
     if actor.role < Role.ADMIN:
         raise PermissionDeniedError(
             "You must be an administrator to change roles.",
