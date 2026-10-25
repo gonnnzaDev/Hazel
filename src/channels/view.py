@@ -74,6 +74,21 @@ async def get_channel(
     return await service.get_channel(session, server_id, channel_id)
 
 
+@router.post(
+    "/{server_id}/channels/{channel_id}/join",
+    response_model=ChannelRead,
+    summary="Join a channel",
+)
+async def join_channel(
+    server_id: ServerId,
+    channel_id: ChannelId,
+    member: CurrentMember,
+    session: SessionDep,
+) -> Channel:
+    _require_same_server(member, server_id)
+    return await service.get_channel(session, server_id, channel_id)
+
+
 @router.patch(
     "/{server_id}/channels/{channel_id}",
     response_model=ChannelRead,
