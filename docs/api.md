@@ -18,7 +18,8 @@ API must expose, before the implementation exists.
 - Endpoints hang off `/api/v1`.
 - Everything but `GET` accepts and returns JSON.
 - Errors use `application/problem+json` (RFC 9457).
-- There are no global accounts. **Identity is a nickname inside a server.**
+- There are no global accounts. **Identity is a nickname inside a server**,
+  requested first when joining.
 - WebSocket at `/api/v1/ws`.
 
 ---
@@ -116,8 +117,10 @@ If the machine has no usable address — a container without network, for
 example — it returns `candidates: []` and `recommended: null` instead of
 failing. The client shows a useful message.
 
-**Pending your decision:** do we ask the owner to pick their IP at deploy time,
-or solve it with auto-detection as above?
+**Decision:** the address is detected automatically. The client uses
+`recommended` and lets the owner override it from `candidates` when the machine
+has VPN, Docker or several NICs. If no usable address exists, the client asks
+the owner to type one.
 
 ---
 
@@ -262,15 +265,19 @@ Custom roles come later. The permission model stays open for you to define.
 
 | Method | Route | What it does |
 |---|---|---|
-| `[ ]` | `POST /api/v1/servers/{server_id}/channels` | Create channel. |
-| `[ ]` | `GET /api/v1/servers/{server_id}/channels` | List channels. |
-| `[ ]` | `GET /api/v1/servers/{server_id}/channels/{channel_id}` | See a channel. |
-| `[ ]` | `PATCH /api/v1/servers/{server_id}/channels/{channel_id}` | Edit. |
-| `[ ]` | `DELETE /api/v1/servers/{server_id}/channels/{channel_id}` | Delete. |
-| `[ ]` | `POST /api/v1/servers/{server_id}/channels/{channel_id}/join` | Join channel (open socket). |
+| `[x]` | `POST /api/v1/servers/{server_id}/channels` | Create channel. |
+| `[x]` | `GET /api/v1/servers/{server_id}/channels` | List channels. |
+| `[x]` | `GET /api/v1/servers/{server_id}/channels/{channel_id}` | See a channel. |
+| `[x]` | `PATCH /api/v1/servers/{server_id}/channels/{channel_id}` | Edit. |
+| `[x]` | `DELETE /api/v1/servers/{server_id}/channels/{channel_id}` | Delete. |
+| `[~]` | `POST /api/v1/servers/{server_id}/channels/{channel_id}/join` | Join channel (open socket). |
 
 Each server has exactly one `is_default` channel, where people land on join.
 Guaranteed by DB constraint, not just code.
+
+> The `join` endpoint validates that the member can reach the channel of an
+> active server and returns the channel; attaching a live socket to the event
+> stream lands with the realtime feature.
 
 ---
 
@@ -278,22 +285,21 @@ Guaranteed by DB constraint, not just code.
 
 | Method | Route | What it does |
 |---|---|---|
-| `[ ]` | `POST /api/v1/channels/{channel_id}/messages` | Publish. |
-| `[ ]` | `GET /api/v1/channels/{channel_id}/messages` | Paginated history. |
-| `[ ]` | `GET /api/v1/channels/{channel_id}/messages/{message_id}` | See one. |
-| `[ ]` | `PATCH /api/v1/channels/{channel_id}/messages/{message_id}` | Edit. |
-| `[ ]` | `DELETE /api/v1/channels/{channel_id}/messages/{message_id}` | Delete. |
-| `[ ]` | `POST /api/v1/channels/{channel_id}/messages/{message_id}/reactions` | React. |
-| `[ ]` | `DELETE /api/v1/channels/{channel_id}/messages/{message_id}/reactions/{emoji}` | Remove reaction. |
+| `[x]` | `POST /api/v1/channels/{channel_id}/messages` | Publish. |
+| `[x]` | `GET /api/v1/channels/{channel_id}/messages` | Paginated history. |
+| `[x]` | `GET /api/v1/channels/{channel_id}/messages/{message_id}` | See one. |
+| `[x]` | `PATCH /api/v1/channels/{channel_id}/messages/{message_id}` | Edit. |
+| `[x]` | `DELETE /api/v1/channels/{channel_id}/messages/{message_id}` | Delete. |
+| `[x]` | `POST /api/v1/channels/{channel_id}/messages/{message_id}/reactions` | React. |
+| `[x]` | `DELETE /api/v1/channels/{channel_id}/messages/{message_id}/reactions/{emoji}` | Remove reaction. |
 
-### Pagination
+### History pagination
 
-Cursor by `message_id`, which is UUID v7, so id order **is** chronological
-order. No extra index or `created_at` field needed for sorting.
-
-```http
-GET /api/v1/channels/01a1.../messages?limit=50&before=01a1...f3e2
-```
+Cursor navigation: `GET /api/v1/channels/01a1.../messages?limit=50&before=01a1...f3e2`.
+Cursors use `message_id`, which is UUID v7, so id order **is** chronological
+order; no extra index or `created_at` column is needed for sorting. The
+response carries `{ items, limit, next_cursor }` and `next_cursor` is what you
+pass back as `before`.
 
 ### Publishing a message
 
@@ -320,7 +326,27 @@ Authorization: Bearer <token>
 
 **Limits:** 4000 bytes per message, 20 messages per minute per nickname. Rate
 limit is per nickname, not per IP: on a local network everyone can sit behind
-the same router and cutting service wouldn't be fair.
+the same router and cutting service wouldn't be fair. Both limits live in
+`config/limits_config.py`.
+
+**History pagination** returns `{ items, limit, next_cursor }`. `next_cursor`
+is the id of the oldest item; pass it as `before` on the next page. `null`
+means the history ends there.
+
+**Deletion is logical.** A deleted message keeps its id and author but
+exposes `content: null` and `deleted: true`. Replying to or reacting on a
+deleted message returns `409 message_deleted`.
+
+**Ownership rules** (decided): only the author edits a message; the author or
+an admin deletes it. Deleting is soft (`deleted_at`); history stays readable.
+
+**Reactions** are free-form (any emoji up to 64 chars), one per member per
+emoji. `POST` is idempotent: reacting twice returns the message unchanged.
+`DELETE /reactions/{emoji}` removes *your* reaction; removing one you never
+added returns `204` as well.
+
+**Attachments** are reserved: the field exists and must be empty
+(`attachments: []`) until the files feature fills it.
 
 ---
 
@@ -328,42 +354,88 @@ the same router and cutting service wouldn't be fair.
 
 | Method | Route | What it does |
 |---|---|---|
-| `[ ]` | `WS /api/v1/ws?token=<token>` | Event channel. |
+| `[x]` | `WS /api/v1/ws?token=<token>` | Event channel. |
 
 Token goes in query string because browsers and several mobile clients don't
-allow custom headers on the WebSocket handshake.
+allow custom headers on the WebSocket handshake. The socket is authenticated
+once at connect time. The token must belong to an **active** server; invalid,
+expired, foreign-server and inactive-server tokens close with code `1008`.
 
-### Server events
+Every event uses the same envelope. `channel_id` is present only for
+channel-scoped events:
 
 ```json
 { "type": "message.created", "server_id": "...", "channel_id": "...", "data": { } }
 ```
 
+Server-scoped events go to every socket connected to that server.
+Channel-scoped events go only to sockets that have subscribed to the channel.
+
+### Server events
+
 | Event | When |
 |---|---|
-| `message.created` | Someone wrote. |
-| `message.updated` | Someone edited. |
-| `message.deleted` | Someone deleted. |
-| `reaction.added` | Someone reacted. |
-| `reaction.removed` | Someone removed a reaction. |
-| `presence.update` | Someone joined or left. |
-| `typing.start` | Someone is typing. |
+| `connection.ready` | The socket is authenticated. Data: `member`, `server`. |
+| `message.created` | Someone wrote in a subscribed channel. |
+| `presence.update` | A member's first socket connected or last socket disconnected. |
+| `typing.start` | A subscribed member is typing. |
 | `member.joined` | Someone joined the server. |
-| `member.left` | Someone left. |
-| `server.updated` | Name, channels, etc. changed. |
-| `server.state_changed` | Server changed state. |
-| `node.state_changed` | Node opened or closed the port. |
+| `member.left` | Someone left or was kicked. |
+| `server.updated` | Name, description or limits changed. |
+| `server.state_changed` | Server was created, activated, deactivated or deleted. |
+| `channel.subscribed` | The server accepted a `channel.subscribe` request. |
+| `channel.unsubscribed` | The channel subscription was removed. |
+| `heartbeat` | Acknowledgement of a client heartbeat. Data: `server_time`. |
+| `error` | A client event was invalid. Data: `code`, `detail`. |
+
+Planned, not emitted yet because their HTTP endpoints are not implemented:
+`message.updated`, `message.deleted`, `reaction.added`, `reaction.removed`,
+`node.state_changed`.
 
 ### Client events
 
 ```json
-{ "type": "typing.start", "channel_id": "..." }
 { "type": "channel.subscribe", "channel_id": "..." }
+{ "type": "channel.unsubscribe", "channel_id": "..." }
+{ "type": "typing.start", "channel_id": "..." }
 { "type": "heartbeat" }
 ```
 
-Server ignores unknown events instead of dropping the connection. An old mobile
-client that doesn't know a new event doesn't crash.
+A client must send `channel.subscribe` before it receives channel-scoped
+events. `typing.start` is only accepted for subscribed channels and is
+broadcast to the other subscribers. The server ignores unknown event types
+instead of dropping the connection, so an old mobile client that doesn't know
+a new event doesn't crash.
+
+### Realtime rules (decided)
+
+- **Presence is the socket line.** Connecting a socket marks the member online;
+  closing every socket of a member marks it offline. Each transition is one
+  server-wide `presence.update`; a member with two open sockets transitions
+  once (no per-socket noise). No heartbeats update presence, only the traffic
+  line does.
+- **`typing.start` reaches only the channel's subscribers** and requires the
+  sender to be subscribed too; it is never persisted. One socket admits up to
+  `HAZEL_TYPING_RATE_PER_MINUTE` (default 15) typing events per minute; extra
+  ones are ignored silently.
+- **Heartbeat answers `{"type": "heartbeat"}`.** A socket that sends nothing
+  for `HAZEL_WEBSOCKET_IDLE_TIMEOUT_SECONDS` (default 300) is closed cleanly.
+- **Per-socket queues are bounded** (`HAZEL_WEBSOCKET_QUEUE_SIZE`, default
+  128). A consumer too slow to drain its queue is closed instead of eating
+  memory or blocking the bus.
+- **`message.*` and `reaction.*` payloads carry the full message** in the same
+  shape as `GET /messages/{id}` (`message.deleted` carries only the id), so a
+  client can refresh without a second round trip.
+- **Delivery rides the outbox**: events are written in the same transaction as
+  the change and fan out after the commit, at-least-once. There is no replay for
+  disconnected clients in v1 (no retained history of events).
+- **`server.state_changed`** is emitted from the servers service lifecycle
+  (activate / deactivate / delete). **`server.updated`** and
+  **`node.state_changed`** have no emission point yet (`[~]`) until the
+  server-updatable endpoint and the supervisor hooks land.
+- **The bus is in-process** (per-process). It serves the process where the
+  change happened and where the socket connects; cross-process fan-out between
+  the node and group processes stays open for a later bus transport.
 
 ---
 
@@ -409,7 +481,9 @@ don't type the IP by hand.
 | `[ ]` | `GET /api/v1/servers/{server_id}/events` | Audit. |
 
 This isn't secondary: it's what gives the owner confidence their data is on
-their PC and recoverable.
+their PC and recoverable. Backups must cover the last 3 days of changes; the
+storage mechanism and the endpoint contract are still to be implemented (see
+`architecture.md` §9).
 
 ---
 
@@ -468,16 +542,17 @@ types from OpenAPI without effort.
 These are product questions, not implementation ones. Left open until you
 resolve them:
 
-1. **Kafka on the user's PC.** You asked Kafka for chat, but it's a heavy
-   dependency for a desktop process. Embedded Kafka, external Kafka, or a bus
-   with two implementations?
+1. ~~Kafka on the user's PC.~~ **Resolved:** every PC runs a complete Kafka.
+   There is no embedded mode or local fallback. See `architecture.md` §4.
 2. ~~Node with N servers vs node = 1 server.~~ **Resolved:** node holds N
-   servers. See section 0. If you want the literal reading, it's a refactor.
-3. ~~Shareable IP resolution.~~ **Partial:** API returns all candidates and
-   client picks. Still needs how the PC client shows it.
+   servers. See section 0.
+3. ~~Shareable IP resolution.~~ **Resolved:** the node detects its addresses
+   and returns `recommended` plus `candidates`; the client uses the
+   recommendation and lets the owner override it.
 4. **Server discovery.** See section 8.
 5. **Where files live.** See section 9.
 6. **Custom roles.** Needed, or are three roles enough for v1?
-7. **Personal name vs nickname.** You said the user can have a personal name for
-   personal use, but nickname was the only thing to implement. Is that a new
-   entity or the same `display_name`?
+7. ~~Personal name vs nickname.~~ **Resolved:** nickname is per server and is
+   requested first on join. There is no global personal name for now.
+8. **Backup mechanism.** The 3-day window is decided; whether it is WAL/PITR
+   or scheduled dumps is still open.

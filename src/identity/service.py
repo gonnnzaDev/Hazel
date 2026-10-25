@@ -14,6 +14,7 @@ from core.api.errors import (
     PermissionDeniedError,
     ValidationDomainError,
 )
+from events.outbox import queue_event
 from identity import repository
 from identity.model import Member
 from identity.roles import Role
@@ -59,6 +60,17 @@ async def join_server(
         ) from None
 
     await session.refresh(member)
+    await queue_event(
+        session,
+        "member.joined",
+        server_id=server.id,
+        data={
+            "member_id": str(member.id),
+            "nickname": member.nickname,
+            "display_name": member.display_name,
+            "role": member.role_enum.label,
+        },
+    )
     return member, raw_token, token.expires_at
 
 
@@ -87,14 +99,43 @@ def _default_display_name(canonical: str) -> str:
 async def leave_server(session: AsyncSession, member: Member) -> None:
     server_id = member.server_id
     was_owner = member.role_enum is Role.OWNER
+    member_id = member.id
+    nickname = member.nickname
+    display_name = member.display_name
 
     await repository.delete_member(session, member)
 
     if was_owner:
         await repository.promote_oldest_to_owner(session, server_id)
 
+    await queue_event(
+        session,
+        "member.left",
+        server_id=server_id,
+        data={
+            "member_id": str(member_id),
+            "nickname": nickname,
+            "display_name": display_name,
+            "reason": "left",
+        },
+    )
+
+
+async def revoke_token(session: AsyncSession, raw_token: str) -> None:
+    await repository.revoke_token(session, raw_token)
+
+
+async def revoke_all_tokens(session: AsyncSession, member: Member) -> int:
+    return await repository.revoke_all_tokens(session, member)
+
 
 async def kick_member(session: AsyncSession, actor: Member, target: Member) -> None:
+    if actor.server_id != target.server_id:
+        raise PermissionDeniedError(
+            "You cannot manage members of another server.",
+            code="wrong_server",
+        )
+
     if not actor.role_enum.can_administer:
         raise PermissionDeniedError(
             "You must be an administrator to kick someone.",
@@ -116,14 +157,36 @@ async def kick_member(session: AsyncSession, actor: Member, target: Member) -> N
 
     server_id = target.server_id
     was_owner = target.role_enum is Role.OWNER
+    member_id = target.id
+    nickname = target.nickname
+    display_name = target.display_name
 
     await repository.delete_member(session, target)
 
     if was_owner:
         await repository.promote_oldest_to_owner(session, server_id)
 
+    await queue_event(
+        session,
+        "member.left",
+        server_id=server_id,
+        data={
+            "member_id": str(member_id),
+            "nickname": nickname,
+            "display_name": display_name,
+            "reason": "kicked",
+            "by": actor.nickname,
+        },
+    )
+
 
 async def set_role(session: AsyncSession, actor: Member, target: Member, role: Role) -> Member:
+    if actor.server_id != target.server_id:
+        raise PermissionDeniedError(
+            "You cannot manage members of another server.",
+            code="wrong_server",
+        )
+
     if actor.role < Role.ADMIN:
         raise PermissionDeniedError(
             "You must be an administrator to change roles.",

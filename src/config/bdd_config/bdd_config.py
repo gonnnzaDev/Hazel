@@ -31,7 +31,6 @@ def _utcnow() -> datetime:
 
 
 class Base(DeclarativeBase):
-
     metadata = MetaData(naming_convention=NAMING_CONVENTION)
 
     type_annotation_map: ClassVar[dict[object, object]] = {
@@ -103,3 +102,7 @@ async def session_scope() -> AsyncIterator[AsyncSession]:
         except Exception:
             await session.rollback()
             raise
+
+        from events.outbox import dispatch_pending_events
+
+        await dispatch_pending_events(session)
