@@ -12,15 +12,12 @@ _FORWARDED = frozenset({"offer", "answer", "ice"})
 
 
 class CallManager:
-
     def __init__(self, store: RoomStore | None = None) -> None:
         self._store = store or RoomStore()
 
     async def join(self, channel_id: str, peer: Peer) -> list[Peer]:
         existing = await self._store.add(channel_id, peer)
-        logger.info(
-            "call %s: join %s (%d present)", channel_id, peer.nickname, len(existing) + 1
-        )
+        logger.info("call %s: join %s (%d present)", channel_id, peer.nickname, len(existing) + 1)
         return existing
 
     async def leave(self, channel_id: str, member_id: str) -> list[Peer]:
@@ -113,7 +110,7 @@ async def _safe_send(peer: Peer, message: dict[str, object]) -> bool:
 def parse_signal(raw: str) -> dict[str, object] | None:
     try:
         parsed = json.loads(raw)
-    except (ValueError, TypeError):
+    except ValueError, TypeError:
         return None
     return parsed if isinstance(parsed, dict) else None
 

@@ -22,7 +22,6 @@ SUPERVISE_INTERVAL_SECONDS = 2.0
 
 @dataclass(slots=True)
 class GroupProcess:
-
     server_id: RecordId
     port: int
     process: asyncio.subprocess.Process
@@ -46,14 +45,12 @@ class GroupProcess:
 
 
 class GroupSupervisor:
-
     def __init__(self, *, db_url: str, host: str = "0.0.0.0") -> None:  # noqa: S104
         self._db_url = db_url
         self._host = host
         self._groups: dict[RecordId, GroupProcess] = {}
         self._shutdown = asyncio.Event()
         self._supervisor_task: asyncio.Task[None] | None = None
-
 
     async def start(self) -> None:
         if self._supervisor_task is not None and not self._supervisor_task.done():
@@ -75,7 +72,6 @@ class GroupSupervisor:
         await asyncio.gather(*(self._terminate(g) for g in list(self._groups.values())))
         self._groups.clear()
         logger.info("group supervisor stopped")
-
 
     async def spawn(self, server_id: RecordId, port: int) -> GroupProcess:
         existing = self._groups.get(server_id)
@@ -138,7 +134,6 @@ class GroupSupervisor:
         logger.warning("group %s did not respond within %ss", server_id, timeout_seconds)
         return False
 
-
     def is_running(self, server_id: RecordId) -> bool:
         group = self._groups.get(server_id)
         return group is not None and group.is_running
@@ -156,7 +151,6 @@ class GroupSupervisor:
     @property
     def count(self) -> int:
         return len(self._groups)
-
 
     def _child_env(self) -> dict[str, str]:
         env = dict(os.environ)
@@ -213,7 +207,7 @@ class GroupSupervisor:
             try:
                 with urllib.request.urlopen(url, timeout=1) as response:  # noqa: S310
                     return bool(response.status == 200)
-            except (urllib.error.URLError, OSError, ValueError):
+            except urllib.error.URLError, OSError, ValueError:
                 return False
 
         result: bool = await loop.run_in_executor(None, _check)

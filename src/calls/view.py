@@ -34,7 +34,6 @@ router = APIRouter()
 
 @dataclass(slots=True)
 class CallIdentity:
-
     member_id: str
     nickname: str
     display_name: str
@@ -47,7 +46,7 @@ async def resolve_identity(server_id: str, channel_id: str, token: str) -> CallI
     try:
         sid = uuid.UUID(server_id)
         cid = uuid.UUID(channel_id)
-    except (ValueError, AttributeError):
+    except ValueError, AttributeError:
         raise NotFoundError(
             "Server or channel does not exist.",
             code="call_target_not_found",
@@ -176,9 +175,7 @@ async def call_signaling(
         pass
     finally:
         await call_manager.leave(channel_id, peer.member_id)
-        await call_manager.broadcast(
-            channel_id, {"type": "peer-left", "member_id": peer.member_id}
-        )
+        await call_manager.broadcast(channel_id, {"type": "peer-left", "member_id": peer.member_id})
 
 
 def _close_reason(exc: Exception) -> str:
@@ -188,7 +185,6 @@ def _close_reason(exc: Exception) -> str:
 
 
 class CallParticipant(BaseModel):
-
     member_id: str
     nickname: str
     display_name: str
@@ -197,7 +193,6 @@ class CallParticipant(BaseModel):
 
 
 class CallParticipantsResponse(BaseModel):
-
     channel_id: str
     participants: list[CallParticipant] = Field(default_factory=list)
     count: int

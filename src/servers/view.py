@@ -40,10 +40,10 @@ async def create_server(
 ) -> ServerRead:
     supervisor = node_service.supervisor_from(request)
     server = await node_service.create_group(session, supervisor, payload)
-    queue_event(
+    await queue_event(
         session,
         event_type="server.state_changed",
-        server_id=str(server.id),
+        server_id=server.id,
         data={"server_id": str(server.id), "status": server.status.value},
     )
     return ServerRead.model_validate(server)
@@ -87,10 +87,10 @@ async def update_server(
     server = await repository.get_server(session, server_id)
     updated = await repository.update_server(session, server, payload)
     data = ServerRead.model_validate(updated).model_dump(mode="json")
-    queue_event(
+    await queue_event(
         session,
         event_type="server.updated",
-        server_id=str(updated.id),
+        server_id=updated.id,
         data=data,
     )
     return ServerRead.model_validate(updated)
@@ -108,10 +108,10 @@ async def activate_server(
 ) -> ServerRead:
     server = await repository.get_server(session, server_id)
     activated = await service.activate_server(session, server)
-    queue_event(
+    await queue_event(
         session,
         event_type="server.state_changed",
-        server_id=str(activated.id),
+        server_id=activated.id,
         data={"server_id": str(activated.id), "status": activated.status.value},
     )
     return ServerRead.model_validate(activated)
@@ -129,10 +129,10 @@ async def deactivate_server(
 ) -> ServerRead:
     server = await repository.get_server(session, server_id)
     deactivated = await service.deactivate_server(session, server)
-    queue_event(
+    await queue_event(
         session,
         event_type="server.state_changed",
-        server_id=str(deactivated.id),
+        server_id=deactivated.id,
         data={"server_id": str(deactivated.id), "status": deactivated.status.value},
     )
     return ServerRead.model_validate(deactivated)
@@ -165,10 +165,10 @@ async def delete_server(
 ) -> None:
     server = await repository.get_server(session, server_id)
     await service.delete_server(session, server)
-    queue_event(
+    await queue_event(
         session,
         event_type="server.state_changed",
-        server_id=str(server_id),
+        server_id=server_id,
         data={"server_id": str(server_id), "status": "deleted"},
     )
 

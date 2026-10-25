@@ -102,7 +102,3 @@ async def session_scope() -> AsyncIterator[AsyncSession]:
         except Exception:
             await session.rollback()
             raise
-
-        from events.outbox import dispatch_pending_events
-
-        await dispatch_pending_events(session)

@@ -4,7 +4,6 @@ from enum import IntEnum
 
 
 class Role(IntEnum):
-
     MEMBER = 10
 
     ADMIN = 50

@@ -22,10 +22,6 @@ async def db_session() -> AsyncIterator[AsyncSession]:
             await session.rollback()
             raise
 
-        from events.outbox import dispatch_pending_events
-
-        await dispatch_pending_events(session)
-
 
 SessionDep = Annotated[AsyncSession, Depends(db_session)]
 SettingsDep = Annotated[Settings, Depends(get_settings)]

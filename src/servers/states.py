@@ -4,7 +4,6 @@ from enum import StrEnum
 
 
 class ServerStatus(StrEnum):
-
     CREATING = "creating"
 
     ACTIVE = "active"

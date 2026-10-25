@@ -6,7 +6,6 @@ from core.network import LocalAddress
 
 
 class NodeInfo(BaseModel):
-
     model_config = ConfigDict(from_attributes=True)
 
     service: str
@@ -19,7 +18,6 @@ class NodeInfo(BaseModel):
 
 
 class NodeAddress(BaseModel):
-
     model_config = ConfigDict(from_attributes=True)
 
     port: int

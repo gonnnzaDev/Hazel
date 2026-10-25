@@ -31,7 +31,6 @@ def _enum_values(enum_cls: type[StrEnum]) -> list[str]:
 
 
 class Server(Base):
-
     __tablename__ = "servers"
 
     id: Mapped[RecordId] = mapped_column(primary_key=True, default=new_id)
