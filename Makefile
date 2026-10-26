@@ -38,8 +38,8 @@ stack-down: ## Stop the stack
 stack-logs: ## Node logs
 	docker compose logs -f api
 
-api: ## Start the API with reload
-	uv run python -m core --reload
+api: ## Start the node on this machine
+	uv run python -m core node
 
 migrate: ## Apply migrations
 	uv run alembic upgrade head
