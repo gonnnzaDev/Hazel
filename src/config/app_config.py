@@ -10,6 +10,7 @@ class AppSection(BaseModel):
     debug: bool = False
     secret_key: str = Field(min_length=1)
     admin_token: str = ""
+    storage_root: str = Field(default="/data/hazel", min_length=1)
 
     @property
     def is_production(self) -> bool:

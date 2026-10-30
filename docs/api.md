@@ -243,8 +243,8 @@ which is why rate limits and member caps exist.
 
 | Method | Route | What it does |
 |---|---|---|
-| `[ ]` | `GET /api/v1/servers/{server_id}/roles` | List roles. |
-| `[ ]` | `POST /api/v1/servers/{server_id}/roles` | Create custom role. |
+
+
 
 The three base roles already apply: a member stops being `member` and becomes
 `admin` with `PUT .../role?role=admin`.
@@ -270,7 +270,7 @@ Custom roles come later. The permission model stays open for you to define.
 | `[x]` | `GET /api/v1/servers/{server_id}/channels/{channel_id}` | See a channel. |
 | `[x]` | `PATCH /api/v1/servers/{server_id}/channels/{channel_id}` | Edit. |
 | `[x]` | `DELETE /api/v1/servers/{server_id}/channels/{channel_id}` | Delete. |
-| `[~]` | `POST /api/v1/servers/{server_id}/channels/{channel_id}/join` | Join channel (open socket). |
+| `[x]` | `POST /api/v1/servers/{server_id}/channels/{channel_id}/join` | Join channel (open socket). |
 
 Each server has exactly one `is_default` channel, where people land on join.
 Guaranteed by DB constraint, not just code.
@@ -388,9 +388,7 @@ Channel-scoped events go only to sockets that have subscribed to the channel.
 | `heartbeat` | Acknowledgement of a client heartbeat. Data: `server_time`. |
 | `error` | A client event was invalid. Data: `code`, `detail`. |
 
-Planned, not emitted yet because their HTTP endpoints are not implemented:
-`message.updated`, `message.deleted`, `reaction.added`, `reaction.removed`,
-`node.state_changed`.
+Planned, not emitted yet: `node.state_changed`.
 
 ### Client events
 
@@ -430,9 +428,8 @@ a new event doesn't crash.
   the change and fan out after the commit, at-least-once. There is no replay for
   disconnected clients in v1 (no retained history of events).
 - **`server.state_changed`** is emitted from the servers service lifecycle
-  (activate / deactivate / delete). **`server.updated`** and
-  **`node.state_changed`** have no emission point yet (`[~]`) until the
-  server-updatable endpoint and the supervisor hooks land.
+  (activate / deactivate / delete). **`server.updated`** is emitted by
+  `PATCH /servers/{id}`. **`node.state_changed`** has no emission point yet (`[~]`).
 - **The bus is in-process** (per-process). It serves the process where the
   change happened and where the socket connects; cross-process fan-out between
   the node and group processes stays open for a later bus transport.
@@ -443,9 +440,9 @@ a new event doesn't crash.
 
 | Method | Route | What it does |
 |---|---|---|
-| `[ ]` | `POST /api/v1/servers/{server_id}/invites` | Create invite. |
-| `[ ]` | `GET /api/v1/invites/{code}` | See an invite. |
-| `[ ]` | `DELETE /api/v1/invites/{code}` | Revoke. |
+| `[x]` | `POST /api/v1/servers/{server_id}/invites` | Create invite. |
+| `[x]` | `GET /api/v1/invites/{code}` | See an invite. |
+| `[x]` | `DELETE /api/v1/invites/{code}` | Revoke. |
 
 **Decision made:** discovery is manual. No central registry publishing "there's
 a server at 192.168.1.50:7272". The owner shares `host:port` as shared before
@@ -461,9 +458,9 @@ don't type the IP by hand.
 
 | Method | Route | What it does |
 |---|---|---|
-| `[ ]` | `POST /api/v1/channels/{channel_id}/attachments` | Upload. |
-| `[ ]` | `GET /api/v1/attachments/{attachment_id}` | Download. |
-| `[ ]` | `DELETE /api/v1/attachments/{attachment_id}` | Delete. |
+| `[x]` | `POST /api/v1/channels/{channel_id}/attachments` | Upload. |
+| `[x]` | `GET /api/v1/attachments/{attachment_id}` | Download. |
+| `[x]` | `DELETE /api/v1/attachments/{attachment_id}` | Delete. |
 
 > **Pending your decision:** do files live on node disk, or external storage (S3
 > and compatibles)? On a self-hosted node, local disk is simple, but capped by
@@ -475,10 +472,10 @@ don't type the IP by hand.
 
 | Method | Route | What it does |
 |---|---|---|
-| `[ ]` | `GET /api/v1/servers/{server_id}/stats` | Members, messages, size. |
-| `[ ]` | `POST /api/v1/servers/{server_id}/backup` | Backup to file. |
-| `[ ]` | `POST /api/v1/servers/{server_id}/restore` | Restore from backup. |
-| `[ ]` | `GET /api/v1/servers/{server_id}/events` | Audit. |
+| `[x]` | `GET /api/v1/servers/{server_id}/stats` | Members, messages, size. |
+| `[x]` | `POST /api/v1/servers/{server_id}/backup` | Backup to file. |
+| `[x]` | `POST /api/v1/servers/{server_id}/restore` | Restore from backup. |
+| `[x]` | `GET /api/v1/servers/{server_id}/events` | Audit. |
 
 This isn't secondary: it's what gives the owner confidence their data is on
 their PC and recoverable. Backups must cover the last 3 days of changes; the
