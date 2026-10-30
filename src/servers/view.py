@@ -9,16 +9,12 @@ from core.api.admin import AdminAuth
 from core.api.deps import SessionDep
 from events.outbox import queue_event
 from identity.deps import CurrentMember
-from identity.model import Member
 from node import service as node_service
 from node.schemas import NodeAddress
 from servers import repository, service
 from servers.schemas import (
-    AuditEventRead,
-    BackupRead,
     InviteCreate,
     InviteRead,
-    RestoreRequest,
     ServerAddress,
     ServerCreate,
     ServerListResponse,
@@ -43,6 +39,7 @@ def _require_same_server(member: Member, server_id: RecordId) -> None:
 
 
 ServerId = Annotated[RecordId, Path(description="Server identifier")]
+InviteCode = Annotated[str, Path(min_length=4, max_length=32, description="Invite code")]
 QueryLimit = Annotated[int, Query(ge=1, le=100, description="Max servers per page")]
 QueryOffset = Annotated[int, Query(ge=0, description="How many servers to skip")]
 
@@ -249,151 +246,22 @@ async def create_invite(
     member: CurrentMember,
     session: SessionDep,
 ) -> InviteRead:
-    _require_same_server(member, server_id)
     server = await repository.get_server(session, server_id)
+    service.ensure_member_of(member, server_id)
     invite = await service.create_invite(session, server, member, payload)
-    await service.record_audit(
-        session,
-        server_id=server_id,
-        actor_nickname=member.nickname,
-        action="invite.created",
-        target_type="invite",
-        target_id=invite.code,
-    )
-    return InviteRead(
-        code=invite.code,
-        server_id=invite.server_id,
-        created_by=invite.created_by,
-        created_at=invite.created_at,
-        expires_at=invite.expires_at,
-        single_use=invite.single_use,
-        consumed=invite.consumed,
-        has_password=invite.password_hash is not None,
-    )
+    return InviteRead.model_validate(invite)
 
 
-@invites_router.get(
-    "/{code}",
-    response_model=InviteRead,
-    summary="See an invite",
-)
-async def get_invite(
-    code: Annotated[str, Path(min_length=8, max_length=8)],
-    session: SessionDep,
-    password: Annotated[str | None, Query()] = None,
-) -> InviteRead:
-    invite = await service.get_invite(session, code, password=password)
-    return InviteRead(
-        code=invite.code,
-        server_id=invite.server_id,
-        created_by=invite.created_by,
-        created_at=invite.created_at,
-        expires_at=invite.expires_at,
-        single_use=invite.single_use,
-        consumed=invite.consumed,
-        has_password=invite.password_hash is not None,
-    )
+@router.get("/invites/{code}", response_model=InviteRead, summary="See an invite")
+async def get_invite(code: InviteCode, session: SessionDep) -> InviteRead:
+    invite = await service.get_invite(session, code)
+    return InviteRead.model_validate(invite)
 
 
-@invites_router.delete(
-    "/{code}",
+@router.delete(
+    "/invites/{code}",
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Revoke an invite",
 )
-async def delete_invite(
-    code: Annotated[str, Path(min_length=8, max_length=8)],
-    member: CurrentMember,
-    session: SessionDep,
-) -> None:
-    await service.delete_invite(session, member, code)
-    await service.record_audit(
-        session,
-        server_id=member.server_id,
-        actor_nickname=member.nickname,
-        action="invite.revoked",
-        target_type="invite",
-        target_id=code,
-    )
-
-
-@router.get("/{server_id}/stats", response_model=ServerStats, summary="Server stats")
-async def get_server_stats(
-    server_id: ServerId,
-    member: CurrentMember,
-    session: SessionDep,
-) -> ServerStats:
-    _require_same_server(member, server_id)
-    data = await service.get_server_stats(session, server_id)
-    return ServerStats(**data)
-
-
-@router.post("/{server_id}/backup", response_model=BackupRead, summary="Backup to file")
-async def backup_server(
-    server_id: ServerId,
-    member: CurrentMember,
-    session: SessionDep,
-) -> BackupRead:
-    _require_same_server(member, server_id)
-    role_enum = getattr(member, "role_enum", None)
-    if role_enum is None or not getattr(role_enum, "can_administer", False):
-        from core.api.errors import PermissionDeniedError
-
-        raise PermissionDeniedError("You must be an administrator.", code="not_admin")
-    result = await service.create_backup(session, server_id, member)
-    await service.record_audit(
-        session,
-        server_id=server_id,
-        actor_nickname=getattr(member, "nickname", None),
-        action="server.backup",
-        target_type="server",
-        target_id=str(server_id),
-        data={"backup_id": result["backup_id"]},
-    )
-    return BackupRead(**result)
-
-
-@router.post(
-    "/{server_id}/restore",
-    status_code=status.HTTP_204_NO_CONTENT,
-    summary="Restore from backup",
-)
-async def restore_server(
-    server_id: ServerId,
-    payload: RestoreRequest,
-    member: CurrentMember,
-    session: SessionDep,
-) -> None:
-    _require_same_server(member, server_id)
-    role_enum = getattr(member, "role_enum", None)
-    if role_enum is None or not getattr(role_enum, "can_administer", False):
-        from core.api.errors import PermissionDeniedError
-
-        raise PermissionDeniedError("You must be an administrator.", code="not_admin")
-    await service.restore_backup(session, server_id, payload.backup_id, payload.path)
-    await service.record_audit(
-        session,
-        server_id=server_id,
-        actor_nickname=getattr(member, "nickname", None),
-        action="server.restore",
-        target_type="server",
-        target_id=str(server_id),
-        data={"backup_id": payload.backup_id, "path": payload.path},
-    )
-
-
-@router.get("/{server_id}/events", response_model=list[AuditEventRead], summary="Audit log")
-async def list_server_events(
-    server_id: ServerId,
-    member: CurrentMember,
-    session: SessionDep,
-    limit: Annotated[int, Query(ge=1, le=100)] = 50,
-    offset: Annotated[int, Query(ge=0)] = 0,
-) -> list[AuditEventRead]:
-    _require_same_server(member, server_id)
-    role_enum = getattr(member, "role_enum", None)
-    if role_enum is None or not getattr(role_enum, "can_administer", False):
-        from core.api.errors import PermissionDeniedError
-
-        raise PermissionDeniedError("You must be an administrator.", code="not_admin")
-    rows, _ = await service.list_audit_events(session, server_id, limit=limit, offset=offset)
-    return [AuditEventRead.model_validate(row) for row in rows]
+async def delete_invite(code: InviteCode, session: SessionDep) -> None:
+    await service.delete_invite(session, code)

@@ -146,3 +146,20 @@ class ServerListResponse(BaseModel):
     total: int
     limit: int
     offset: int
+
+
+class InviteCreate(BaseModel):
+    ttl_seconds: Annotated[int, Field(ge=60, le=604800)]
+    single_use: bool = False
+
+
+class InviteRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    code: str
+    server_id: RecordId
+    created_by: str
+    created_at: datetime
+    expires_at: datetime
+    single_use: bool
+    consumed: bool

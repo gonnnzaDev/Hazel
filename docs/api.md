@@ -384,11 +384,29 @@ Channel-scoped events go only to sockets that have subscribed to the channel.
 | `server.updated` | Name, description or limits changed. |
 | `server.state_changed` | Server was created, activated, deactivated or deleted. |
 | `channel.subscribed` | The server accepted a `channel.subscribe` request. |
-| `channel.unsubscribed` | The channel subscription was removed. |
+| `channel.unsubscribed` | The subscription was removed. |
 | `heartbeat` | Acknowledgement of a client heartbeat. Data: `server_time`. |
 | `error` | A client event was invalid. Data: `code`, `detail`. |
 
-Planned, not emitted yet: `node.state_changed`.
+Planned, not emitted yet because their HTTP endpoints are not implemented:
+`node.state_changed` (waiting for supervisor hooks). `message.updated`,
+`message.deleted`, `reaction.added`, `reaction.removed` and `server.updated` are
+emitted through the outbox since their endpoints landed.
+
+### Client events
+
+```json
+{ "type": "channel.subscribe", "channel_id": "..." }
+{ "type": "channel.unsubscribe", "channel_id": "..." }
+{ "type": "typing.start", "channel_id": "..." }
+{ "type": "heartbeat" }
+```
+
+A client must send `channel.subscribe` before it receives channel-scoped
+events. `typing.start` is only accepted for subscribed channels and is
+broadcast to the other subscribers. The server ignores unknown event types
+instead of dropping the connection, so an old mobile client that doesn't know
+a new event doesn't crash.
 
 ### Client events
 
@@ -440,17 +458,16 @@ a new event doesn't crash.
 
 | Method | Route | What it does |
 |---|---|---|
-| `[x]` | `POST /api/v1/servers/{server_id}/invites` | Create invite. |
-| `[x]` | `GET /api/v1/invites/{code}` | See an invite. |
+| `[x]` | `POST /api/v1/servers/{server_id}/invites` | Create invite. Admin/owner only. Body: `{ "ttl_seconds": 300, "single_use": false }`. |
+| `[x]` | `GET /api/v1/invites/{code}` | See/validate invite; consumes single-use invites. |
 | `[x]` | `DELETE /api/v1/invites/{code}` | Revoke. |
 
-**Decision made:** discovery is manual. No central registry publishing "there's
-a server at 192.168.1.50:7272". The owner shares `host:port` as shared before
-the internet: by message. An invite is a short code pointing to the node, so you
-don't type the IP by hand.
+Invites are temporary: `ttl_seconds` (60–604800) sets the lifetime, `single_use`
+flags one-shot consumption. Only admins/owners can create them. Redeeming an
+invite is followed by the nickname join flow (`POST /servers/{server_id}/join`),
+which validates nickname availability per server.
 
-> **Pending your decision:** is sharing `host:port` enough, or do you want some
-> discovery form (short-code invite, QR, public server directory)?
+**Decision resolved:** discovery is by invite codes (**option B**). See §13.
 
 ---
 
@@ -520,6 +537,8 @@ All errors use `application/problem+json`:
 | `rate_limited` | 429 | Over message limit. |
 | `message_too_large` | 413 | Message over 4000 bytes. |
 | `validation_error` | 422 | Body doesn't meet contract. |
+| `invite_not_found` | 404 | Invite code doesn't exist. |
+| `invite_expired` | 410 | Invite TTL passed or single-use consumed. |
 
 ---
 
@@ -546,7 +565,8 @@ resolve them:
 3. ~~Shareable IP resolution.~~ **Resolved:** the node detects its addresses
    and returns `recommended` plus `candidates`; the client uses the
    recommendation and lets the owner override it.
-4. **Server discovery.** See section 8.
+4. ~~Server discovery.~~ **Resolved:** invite codes (option B). Invites are
+   temporary (`ttl_seconds`) and admin/owner-only. See section 8.
 5. **Where files live.** See section 9.
 6. **Custom roles.** Needed, or are three roles enough for v1?
 7. ~~Personal name vs nickname.~~ **Resolved:** nickname is per server and is
