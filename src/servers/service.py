@@ -428,7 +428,11 @@ async def restore_backup(
 
     settings = get_settings()
     storage_root = Path(settings.storage_root)
-    backup_path = Path(path) if path else storage_root / "backups" / f"{backup_id}.tar.gz"
+    backup_dir = storage_root / "backups"
+    backup_path = Path(path) if path else backup_dir / f"{backup_id}.tar.gz"
+    if ".." in backup_path.parts or not str(backup_path).startswith(str(storage_root)):
+        raise ValueError("Invalid backup path")
+
     if not backup_path.exists():
         from core.api.errors import NotFoundError
 

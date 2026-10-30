@@ -25,7 +25,8 @@ def verify_password(password: str | None, hashed: str | None) -> bool:
     if password is None:
         return False
     if "$" not in hashed:
-        return hmac.compare_digest(hashlib.sha256(password.encode("utf-8")).hexdigest(), hashed)
+        # Legacy hashes are no longer supported.
+        return False
     try:
         algorithm, iterations, salt_hex, digest_hex = hashed.split("$", 3)
     except ValueError:
