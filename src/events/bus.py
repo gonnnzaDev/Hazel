@@ -112,6 +112,9 @@ class EventBus:
     def subscribe_channel(self, sub: Subscription, channel_id: RecordId) -> None:
         sub.channels.add(channel_id)
 
+    def unsubscribe_channel(self, sub: Subscription, channel_id: RecordId) -> None:
+        sub.channels.discard(channel_id)
+
     def publish(
         self,
         *,
