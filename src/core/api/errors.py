@@ -68,6 +68,18 @@ class ServerInactiveError(DomainError):
     title = "Server inactive"
 
 
+class InviteNotFoundError(DomainError):
+    status_code = 404
+    code = "invite_not_found"
+    title = "Invite not found"
+
+
+class InviteExpiredError(DomainError):
+    status_code = 410
+    code = "invite_expired"
+    title = "Invite expired"
+
+
 class MessageTooLargeError(DomainError):
     status_code = 413
     code = "message_too_large"

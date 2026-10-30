@@ -8,10 +8,13 @@ from common.types import RecordId
 from core.api.admin import AdminAuth
 from core.api.deps import SessionDep
 from events.outbox import queue_event
+from identity.deps import CurrentMember
 from node import service as node_service
 from node.schemas import NodeAddress
 from servers import repository, service
 from servers.schemas import (
+    InviteCreate,
+    InviteRead,
     ServerAddress,
     ServerCreate,
     ServerListResponse,
@@ -22,6 +25,7 @@ from servers.schemas import (
 router = APIRouter()
 
 ServerId = Annotated[RecordId, Path(description="Server identifier")]
+InviteCode = Annotated[str, Path(min_length=4, max_length=32, description="Invite code")]
 QueryLimit = Annotated[int, Query(ge=1, le=100, description="Max servers per page")]
 QueryOffset = Annotated[int, Query(ge=0, description="How many servers to skip")]
 
@@ -182,3 +186,36 @@ async def get_address(server_id: ServerId, session: SessionDep) -> ServerAddress
     server = await repository.get_server(session, server_id)
     node = NodeAddress.model_validate(node_service.node_address())
     return ServerAddress.from_server(server, node)
+
+
+@router.post(
+    "/{server_id}/invites",
+    response_model=InviteRead,
+    status_code=status.HTTP_201_CREATED,
+    summary="Create an invite",
+)
+async def create_invite(
+    server_id: ServerId,
+    payload: InviteCreate,
+    member: CurrentMember,
+    session: SessionDep,
+) -> InviteRead:
+    server = await repository.get_server(session, server_id)
+    service.ensure_member_of(member, server_id)
+    invite = await service.create_invite(session, server, member, payload)
+    return InviteRead.model_validate(invite)
+
+
+@router.get("/invites/{code}", response_model=InviteRead, summary="See an invite")
+async def get_invite(code: InviteCode, session: SessionDep) -> InviteRead:
+    invite = await service.get_invite(session, code)
+    return InviteRead.model_validate(invite)
+
+
+@router.delete(
+    "/invites/{code}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Revoke an invite",
+)
+async def delete_invite(code: InviteCode, session: SessionDep) -> None:
+    await service.delete_invite(session, code)
