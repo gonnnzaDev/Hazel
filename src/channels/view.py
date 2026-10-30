@@ -42,7 +42,8 @@ async def create_channel(
 ) -> Channel:
     _require_same_server(member, server_id)
     service.ensure_can_manage_channels(member)
-    return await service.create_channel(session, server_id, payload)
+    channel = await service.create_channel(session, server_id, payload)
+    return channel
 
 
 @router.get(
@@ -104,7 +105,8 @@ async def update_channel(
     _require_same_server(member, server_id)
     service.ensure_can_manage_channels(member)
     channel = await service.get_channel(session, server_id, channel_id)
-    return await service.update_channel(session, channel, payload)
+    updated = await service.update_channel(session, channel, payload)
+    return updated
 
 
 @router.delete(
