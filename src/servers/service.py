@@ -185,7 +185,7 @@ def ensure_active(server: Server) -> None:
 def ensure_member_of(member: Member, server_id: RecordId) -> None:
     if member.server_id != server_id:
         raise PermissionDeniedError(
-            "This token belongs to another server.",
+            "You don't have access to this server.",
             code="wrong_server",
             extra={"server_id": str(server_id)},
         )
