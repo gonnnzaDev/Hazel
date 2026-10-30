@@ -12,6 +12,7 @@ from core.api.deps import SessionDep
 from core.api.errors import PermissionDeniedError
 from identity.deps import CurrentMember
 from identity.model import Member
+from servers import service as servers_service
 
 router = APIRouter()
 
@@ -42,7 +43,17 @@ async def create_channel(
 ) -> Channel:
     _require_same_server(member, server_id)
     service.ensure_can_manage_channels(member)
-    return await service.create_channel(session, server_id, payload)
+    channel = await service.create_channel(session, server_id, payload)
+    await servers_service.record_audit(
+        session,
+        server_id=server_id,
+        actor_nickname=member.nickname,
+        action="channel.created",
+        target_type="channel",
+        target_id=str(channel.id),
+        data={"name": channel.name},
+    )
+    return channel
 
 
 @router.get(
@@ -104,7 +115,16 @@ async def update_channel(
     _require_same_server(member, server_id)
     service.ensure_can_manage_channels(member)
     channel = await service.get_channel(session, server_id, channel_id)
-    return await service.update_channel(session, channel, payload)
+    updated = await service.update_channel(session, channel, payload)
+    await servers_service.record_audit(
+        session,
+        server_id=server_id,
+        actor_nickname=member.nickname,
+        action="channel.updated",
+        target_type="channel",
+        target_id=str(updated.id),
+    )
+    return updated
 
 
 @router.delete(
@@ -122,3 +142,11 @@ async def delete_channel(
     service.ensure_can_manage_channels(member)
     channel = await service.get_channel(session, server_id, channel_id)
     await service.delete_channel(session, channel)
+    await servers_service.record_audit(
+        session,
+        server_id=server_id,
+        actor_nickname=member.nickname,
+        action="channel.deleted",
+        target_type="channel",
+        target_id=str(channel_id),
+    )

@@ -9,7 +9,7 @@ from sqlalchemy.orm import selectinload
 
 from channels.model import Channel
 from common.types import RecordId, new_id
-from messages.model import Message, Reaction
+from messages.model import Attachment, Message, Reaction
 
 logger = logging.getLogger(__name__)
 
@@ -182,3 +182,35 @@ async def get_display_names(
     stmt = select(Member.id, Member.display_name).where(Member.id.in_(member_ids))
     rows = (await session.execute(stmt)).all()
     return {row.id: row.display_name for row in rows}
+
+
+async def create_attachment(
+    session: AsyncSession,
+    *,
+    message_id: RecordId,
+    filename: str,
+    content_type: str,
+    size: int,
+    storage_key: str,
+) -> Attachment:
+    attachment = Attachment(
+        id=new_id(),
+        message_id=message_id,
+        filename=filename,
+        content_type=content_type,
+        size=size,
+        storage_key=storage_key,
+    )
+    session.add(attachment)
+    await session.flush()
+    return attachment
+
+
+async def get_attachment(session: AsyncSession, attachment_id: RecordId) -> Attachment | None:
+    return (
+        await session.execute(select(Attachment).where(Attachment.id == attachment_id))
+    ).scalar_one_or_none()
+
+
+async def delete_attachment(session: AsyncSession, attachment: Attachment) -> None:
+    await session.delete(attachment)

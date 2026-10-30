@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Index, String, Text, UniqueConstraint
+from sqlalchemy import DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from common.types import RecordId, new_id
 from config.bdd_config.bdd_config import Base
@@ -37,10 +37,33 @@ class Message(Base):
 
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
+    attachment_records: Mapped[list[Attachment]] = relationship(
+        back_populates="message",
+        cascade="all, delete-orphan",
+    )
+
     __table_args__ = (
         Index("ix_messages_channel_id_created_at", "channel_id", "created_at"),
         Index("ix_messages_author_member_id_created_at", "author_member_id", "created_at"),
     )
+
+
+class Attachment(Base):
+    __tablename__ = "attachments"
+
+    id: Mapped[RecordId] = mapped_column(primary_key=True, default=new_id)
+
+    message_id: Mapped[RecordId] = mapped_column(
+        ForeignKey("messages.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+
+    filename: Mapped[str] = mapped_column(String(255), nullable=False)
+    content_type: Mapped[str] = mapped_column(String(255), nullable=False)
+    size: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    storage_key: Mapped[str] = mapped_column(String(512), nullable=False)
+
+    message: Mapped[Message] = relationship(back_populates="attachment_records")
 
 
 class Reaction(Base):
