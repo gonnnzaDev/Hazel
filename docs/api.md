@@ -384,13 +384,29 @@ Channel-scoped events go only to sockets that have subscribed to the channel.
 | `server.updated` | Name, description or limits changed. |
 | `server.state_changed` | Server was created, activated, deactivated or deleted. |
 | `channel.subscribed` | The server accepted a `channel.subscribe` request. |
-| `channel.unsubscribed` | The channel subscription was removed. |
+| `channel.unsubscribed` | The subscription was removed. |
 | `heartbeat` | Acknowledgement of a client heartbeat. Data: `server_time`. |
 | `error` | A client event was invalid. Data: `code`, `detail`. |
 
 Planned, not emitted yet because their HTTP endpoints are not implemented:
-`message.updated`, `message.deleted`, `reaction.added`, `reaction.removed`,
-`node.state_changed`.
+`node.state_changed` (waiting for supervisor hooks). `message.updated`,
+`message.deleted`, `reaction.added`, `reaction.removed` and `server.updated` are
+emitted through the outbox since their endpoints landed.
+
+### Client events
+
+```json
+{ "type": "channel.subscribe", "channel_id": "..." }
+{ "type": "channel.unsubscribe", "channel_id": "..." }
+{ "type": "typing.start", "channel_id": "..." }
+{ "type": "heartbeat" }
+```
+
+A client must send `channel.subscribe` before it receives channel-scoped
+events. `typing.start` is only accepted for subscribed channels and is
+broadcast to the other subscribers. The server ignores unknown event types
+instead of dropping the connection, so an old mobile client that doesn't know
+a new event doesn't crash.
 
 ### Client events
 

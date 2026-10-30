@@ -97,6 +97,21 @@ async def ws_events(websocket: WebSocket) -> None:
                     },
                 ),
             )
+        bus.publish(
+            server_id=member.server_id,
+            event=envelope(
+                "connection.ready",
+                server_id=member.server_id,
+                data={
+                    "member_id": str(member.id),
+                    "nickname": member.nickname,
+                    "display_name": member.display_name,
+                    "server_id": str(member.server_id),
+                    "server_slug": server.slug,
+                    "server_name": server.name,
+                },
+            ),
+        )
         await session.commit()
 
         typing = TypingWindow()
@@ -134,10 +149,58 @@ async def ws_events(websocket: WebSocket) -> None:
                 elif kind == "channel.subscribe":
                     channel_id = _channel_id_of(payload)
                     if channel_id is None:
+                        bus.publish(
+                            server_id=member.server_id,
+                            event=envelope(
+                                "error",
+                                server_id=member.server_id,
+                                data={
+                                    "code": "invalid_channel_subscribe",
+                                    "detail": "channel_id must be a uuid",
+                                },
+                            ),
+                        )
                         continue
                     channel = await session.get(Channel, channel_id)
                     if channel is not None and channel.server_id == member.server_id:
                         bus.subscribe_channel(sub, channel.id)
+                        bus.publish(
+                            server_id=member.server_id,
+                            channel_id=channel.id,
+                            event=envelope(
+                                "channel.subscribed",
+                                server_id=member.server_id,
+                                channel_id=channel.id,
+                                data={"channel_id": str(channel.id)},
+                            ),
+                        )
+                elif kind == "channel.unsubscribe":
+                    channel_id = _channel_id_of(payload)
+                    if channel_id is None:
+                        bus.publish(
+                            server_id=member.server_id,
+                            event=envelope(
+                                "error",
+                                server_id=member.server_id,
+                                data={
+                                    "code": "invalid_channel_unsubscribe",
+                                    "detail": "channel_id must be a uuid",
+                                },
+                            ),
+                        )
+                        continue
+                    if channel_id in sub.channels:
+                        bus.unsubscribe_channel(sub, channel_id)
+                        bus.publish(
+                            server_id=member.server_id,
+                            channel_id=channel_id,
+                            event=envelope(
+                                "channel.unsubscribed",
+                                server_id=member.server_id,
+                                channel_id=channel_id,
+                                data={"channel_id": str(channel_id)},
+                            ),
+                        )
                 elif kind == "typing.start":
                     channel_id = _channel_id_of(payload)
                     if channel_id is None or channel_id not in sub.channels:
@@ -154,7 +217,18 @@ async def ws_events(websocket: WebSocket) -> None:
                             data={"nickname": member.nickname},
                         ),
                     )
-                # unknown event types are ignored, per contract
+                else:
+                    bus.publish(
+                        server_id=member.server_id,
+                        event=envelope(
+                            "error",
+                            server_id=member.server_id,
+                            data={
+                                "code": "unknown_event_type",
+                                "detail": f"Unsupported event type: {kind}",
+                            },
+                        ),
+                    )
         except WebSocketDisconnect:
             pass
         finally:
