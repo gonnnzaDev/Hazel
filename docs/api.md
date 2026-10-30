@@ -443,17 +443,16 @@ a new event doesn't crash.
 
 | Method | Route | What it does |
 |---|---|---|
-| `[ ]` | `POST /api/v1/servers/{server_id}/invites` | Create invite. |
-| `[ ]` | `GET /api/v1/invites/{code}` | See an invite. |
-| `[ ]` | `DELETE /api/v1/invites/{code}` | Revoke. |
+| `[x]` | `POST /api/v1/servers/{server_id}/invites` | Create invite. Admin/owner only. Body: `{ "ttl_seconds": 300, "single_use": false }`. |
+| `[x]` | `GET /api/v1/invites/{code}` | See/validate invite; consumes single-use invites. |
+| `[x]` | `DELETE /api/v1/invites/{code}` | Revoke. |
 
-**Decision made:** discovery is manual. No central registry publishing "there's
-a server at 192.168.1.50:7272". The owner shares `host:port` as shared before
-the internet: by message. An invite is a short code pointing to the node, so you
-don't type the IP by hand.
+Invites are temporary: `ttl_seconds` (60–604800) sets the lifetime, `single_use`
+flags one-shot consumption. Only admins/owners can create them. Redeeming an
+invite is followed by the nickname join flow (`POST /servers/{server_id}/join`),
+which validates nickname availability per server.
 
-> **Pending your decision:** is sharing `host:port` enough, or do you want some
-> discovery form (short-code invite, QR, public server directory)?
+**Decision resolved:** discovery is by invite codes (**option B**). See §13.
 
 ---
 
@@ -523,6 +522,8 @@ All errors use `application/problem+json`:
 | `rate_limited` | 429 | Over message limit. |
 | `message_too_large` | 413 | Message over 4000 bytes. |
 | `validation_error` | 422 | Body doesn't meet contract. |
+| `invite_not_found` | 404 | Invite code doesn't exist. |
+| `invite_expired` | 410 | Invite TTL passed or single-use consumed. |
 
 ---
 
@@ -549,7 +550,8 @@ resolve them:
 3. ~~Shareable IP resolution.~~ **Resolved:** the node detects its addresses
    and returns `recommended` plus `candidates`; the client uses the
    recommendation and lets the owner override it.
-4. **Server discovery.** See section 8.
+4. ~~Server discovery.~~ **Resolved:** invite codes (option B). Invites are
+   temporary (`ttl_seconds`) and admin/owner-only. See section 8.
 5. **Where files live.** See section 9.
 6. **Custom roles.** Needed, or are three roles enough for v1?
 7. ~~Personal name vs nickname.~~ **Resolved:** nickname is per server and is

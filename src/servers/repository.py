@@ -11,7 +11,7 @@ from sqlalchemy.orm import selectinload
 
 from common.types import RecordId, utcnow
 from core.api.errors import NotFoundError
-from servers.model import Server
+from servers.model import Invite, Server
 from servers.schemas import ServerUpdate
 from servers.states import ServerStatus
 
@@ -78,6 +78,24 @@ async def resolve_by_slug(session: AsyncSession, slug: str) -> Server:
             extra={"slug": slug},
         )
     return server
+
+
+async def get_invite_by_code(session: AsyncSession, code: str) -> Invite | None:
+    stmt = select(Invite).where(Invite.code == code)
+    return (await session.execute(stmt)).scalar_one_or_none()
+
+
+async def delete_invite(session: AsyncSession, code: str) -> None:
+    invite = await get_invite_by_code(session, code)
+
+    if invite is None:
+        raise NotFoundError(
+            "Invite not found.",
+            code="invite_not_found",
+            extra={"code": code},
+        )
+
+    await session.delete(invite)
 
 
 async def update_server(session: AsyncSession, server: Server, payload: ServerUpdate) -> Server:

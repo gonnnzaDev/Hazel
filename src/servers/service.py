@@ -3,16 +3,27 @@ from __future__ import annotations
 import logging
 import re
 import unicodedata
+from datetime import timedelta
+from uuid import uuid4
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from channels import repository as channels_repository
 from common.types import RecordId, new_id, utcnow
-from core.api.errors import ConflictError, ServerInactiveError, ValidationDomainError
+from core.api.errors import (
+    ConflictError,
+    InviteExpiredError,
+    InviteNotFoundError,
+    PermissionDeniedError,
+    ServerInactiveError,
+    ValidationDomainError,
+)
 from events.outbox import queue_event
-from servers.model import Server
-from servers.schemas import ServerCreate
+from identity.model import Member
+from servers import repository as servers_repository
+from servers.model import Invite, Server
+from servers.schemas import InviteCreate, ServerCreate
 from servers.states import ServerStatus, can_transition
 
 logger = logging.getLogger(__name__)
@@ -169,3 +180,62 @@ def ensure_active(server: Server) -> None:
             f"its owner reactivates it.",
             extra={"server_id": str(server.id), "status": server.status.value},
         )
+
+
+def ensure_member_of(member: Member, server_id: RecordId) -> None:
+    if member.server_id != server_id:
+        raise PermissionDeniedError(
+            "This token belongs to another server.",
+            code="wrong_server",
+            extra={"server_id": str(server_id)},
+        )
+
+
+def ensure_can_invite(member: Member) -> None:
+    if not member.role_enum.can_administer:
+        raise PermissionDeniedError(
+            "You must be an administrator to create invites.",
+            code="not_admin",
+        )
+
+
+async def create_invite(
+    session: AsyncSession, server: Server, actor: Member, payload: InviteCreate
+) -> Invite:
+    ensure_can_invite(actor)
+
+    now = utcnow()
+    invite = Invite(
+        code=uuid4().hex[:8].upper(),
+        server_id=server.id,
+        created_by=actor.nickname,
+        created_at=now,
+        expires_at=now + timedelta(seconds=payload.ttl_seconds),
+        single_use=payload.single_use,
+        consumed=False,
+    )
+    session.add(invite)
+    await session.flush()
+    return invite
+
+
+async def get_invite(session: AsyncSession, code: str) -> Invite:
+    invite = await servers_repository.get_invite_by_code(session, code)
+    if invite is None:
+        raise InviteNotFoundError("Invite not found.", extra={"code": code})
+
+    if invite.expires_at < utcnow():
+        raise InviteExpiredError("Invite expired.", extra={"code": code})
+
+    if invite.single_use and invite.consumed:
+        raise ConflictError("Invite already used.", code="invite_invalid", extra={"code": code})
+
+    if invite.single_use and not invite.consumed:
+        invite.consumed = True
+        await session.flush()
+
+    return invite
+
+
+async def delete_invite(session: AsyncSession, code: str) -> None:
+    await servers_repository.delete_invite(session, code)
