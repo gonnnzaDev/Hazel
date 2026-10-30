@@ -12,6 +12,8 @@ from core.api.deps import SessionDep
 from core.api.errors import PermissionDeniedError
 from identity.deps import CurrentMember
 from identity.model import Member
+from servers import repository as servers_repository
+from servers.service import ensure_active
 
 router = APIRouter()
 
@@ -86,6 +88,8 @@ async def join_channel(
     session: SessionDep,
 ) -> Channel:
     _require_same_server(member, server_id)
+    server = await servers_repository.get_server(session, server_id)
+    ensure_active(server)
     return await service.get_channel(session, server_id, channel_id)
 
 
