@@ -49,3 +49,19 @@ class MessageListResponse(BaseModel):
 
 class ReactionCreate(BaseModel):
     emoji: Annotated[str, Field(min_length=1, max_length=64)]
+
+
+class AttachmentRead(BaseModel):
+    id: RecordId
+    message_id: RecordId
+    filename: str
+    content_type: str
+    size: int
+    storage_key: str
+
+
+class AttachmentCreate(BaseModel):
+    message_id: RecordId
+    filename: Annotated[str, Field(min_length=1, max_length=255)]
+    content_type: str = Field(default="application/octet-stream", max_length=255)
+    data: bytes

@@ -5,6 +5,7 @@ from enum import StrEnum
 from typing import TYPE_CHECKING
 
 from sqlalchemy import (
+    Boolean,
     CheckConstraint,
     DateTime,
     ForeignKey,
@@ -120,7 +121,36 @@ class Server(Base):
         order_by="Member.nickname",
     )
 
+    invites: Mapped[list[Invite]] = relationship(
+        back_populates="server",
+        cascade="all, delete-orphan",
+    )
+
     __table_args__ = (
         CheckConstraint("bind_port BETWEEN 1 AND 65535", name="valid_port"),
         CheckConstraint("max_members > 0", name="positive_max_members"),
     )
+
+
+class Invite(Base):
+    __tablename__ = "invites"
+
+    id: Mapped[RecordId] = mapped_column(primary_key=True, default=new_id)
+
+    code: Mapped[str] = mapped_column(String(32), nullable=False, unique=True, index=True)
+
+    server_id: Mapped[RecordId] = mapped_column(
+        ForeignKey("servers.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+
+    created_by: Mapped[str] = mapped_column(String(32), nullable=False)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+    single_use: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    consumed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+
+    server: Mapped[Server] = relationship(back_populates="invites")

@@ -5,7 +5,7 @@ import re
 import secrets
 import unicodedata
 from datetime import timedelta
-from typing import Any
+from uuid import uuid4
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -15,13 +15,16 @@ from common.security import hash_password, verify_password
 from common.types import RecordId, new_id, utcnow
 from core.api.errors import (
     ConflictError,
+    InviteExpiredError,
+    InviteNotFoundError,
     PermissionDeniedError,
     ServerInactiveError,
     ValidationDomainError,
 )
 from events.outbox import queue_event
+from identity.model import Member
 from servers import repository as servers_repository
-from servers.model import AuditEvent, Invite, Server
+from servers.model import Invite, Server
 from servers.schemas import InviteCreate, ServerCreate
 from servers.states import ServerStatus, can_transition
 
@@ -186,264 +189,60 @@ def ensure_active(server: Server) -> None:
         )
 
 
-INVITE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+def ensure_member_of(member: Member, server_id: RecordId) -> None:
+    if member.server_id != server_id:
+        raise PermissionDeniedError(
+            "You don't have access to this server.",
+            code="wrong_server",
+            extra={"server_id": str(server_id)},
+        )
 
 
-def _hash_password(password: str | None) -> str | None:
-    return hash_password(password)
-
-
-def _verify_password(password: str | None, hashed: str | None) -> bool:
-    return verify_password(password, hashed)
-
-
-def _generate_code() -> str:
-    return "".join(secrets.choice(INVITE_ALPHABET) for _ in range(8))
-
-
-def _require_admin(member: Any, message: str, code: str) -> None:
-    role_enum = member.role_enum if hasattr(member, "role_enum") else None
-    if role_enum is None or not role_enum.can_administer:
-        raise PermissionDeniedError(message, code=code)
+def ensure_can_invite(member: Member) -> None:
+    if not member.role_enum.can_administer:
+        raise PermissionDeniedError(
+            "You must be an administrator to create invites.",
+            code="not_admin",
+        )
 
 
 async def create_invite(
-    session: AsyncSession,
-    server: Server,
-    member: Any,
-    payload: InviteCreate,
+    session: AsyncSession, server: Server, actor: Member, payload: InviteCreate
 ) -> Invite:
-    _require_admin(member, "You must be an administrator to create invites.", "not_admin")
+    ensure_can_invite(actor)
 
+    now = utcnow()
     invite = Invite(
-        id=new_id(),
+        code=uuid4().hex[:8].upper(),
         server_id=server.id,
-        code=_generate_code(),
-        created_by=member.nickname if hasattr(member, "nickname") else "",
-        expires_at=utcnow() + timedelta(seconds=payload.ttl_seconds),
+        created_by=actor.nickname,
+        created_at=now,
+        expires_at=now + timedelta(seconds=payload.ttl_seconds),
         single_use=payload.single_use,
-        password_hash=_hash_password(payload.password),
+        consumed=False,
     )
     session.add(invite)
     await session.flush()
     return invite
 
 
-def _validate_invite(invite: Invite | None, code: str, password: str | None) -> None:
-    if invite is None:
-        from core.api.errors import InviteNotFoundError
-
-        raise InviteNotFoundError(
-            "That invite does not exist.",
-            code="invite_not_found",
-            extra={"code": code},
-        )
-    if invite.expires_at <= utcnow():
-        from core.api.errors import InviteExpiredError
-
-        raise InviteExpiredError(
-            "That invite has expired.",
-            code="invite_expired",
-            extra={"code": code},
-        )
-    if invite.single_use and invite.consumed:
-        raise ConflictError(
-            "That invite is no longer valid.",
-            code="invite_invalid",
-            extra={"code": code},
-        )
-    password_hash = invite.password_hash if hasattr(invite, "password_hash") else None
-    if password_hash is not None and not _verify_password(password, password_hash):
-        raise PermissionDeniedError(
-            "The invite password is missing or incorrect.",
-            code="invite_password_invalid",
-        )
-
-
-async def get_invite(
-    session: AsyncSession,
-    code: str,
-    *,
-    password: str | None = None,
-) -> Invite:
+async def get_invite(session: AsyncSession, code: str) -> Invite:
     invite = await servers_repository.get_invite_by_code(session, code)
-    _validate_invite(invite, code, password)
-    assert invite is not None
+    if invite is None:
+        raise InviteNotFoundError("Invite not found.", extra={"code": code})
+
+    if invite.expires_at < utcnow():
+        raise InviteExpiredError("Invite expired.", extra={"code": code})
+
+    if invite.single_use and invite.consumed:
+        raise ConflictError("Invite already used.", code="invite_invalid", extra={"code": code})
+
     if invite.single_use and not invite.consumed:
         invite.consumed = True
         await session.flush()
+
     return invite
 
 
-async def delete_invite(
-    session: AsyncSession,
-    member: Any,
-    code: str,
-) -> None:
-    invite = await servers_repository.get_invite_by_code(session, code)
-    if invite is None:
-        from core.api.errors import InviteNotFoundError
-
-        raise InviteNotFoundError(
-            "That invite does not exist.",
-            code="invite_not_found",
-            extra={"code": code},
-        )
-    member_server_id = member.server_id if hasattr(member, "server_id") else None
-    if str(invite.server_id) != str(member_server_id):
-        raise PermissionDeniedError(
-            "This token belongs to another server.",
-            code="wrong_server",
-        )
-    _require_admin(member, "You must be an administrator to revoke invites.", "not_admin")
-    await servers_repository.delete_invite(session, invite)
-
-
-async def record_audit(
-    session: AsyncSession,
-    *,
-    server_id: RecordId,
-    actor_nickname: str | None,
-    action: str,
-    target_type: str | None = None,
-    target_id: str | None = None,
-    data: dict[str, object] | None = None,
-) -> None:
-    await servers_repository.create_audit_event(
-        session,
-        server_id=server_id,
-        actor_nickname=actor_nickname,
-        action=action,
-        target_type=target_type,
-        target_id=target_id,
-        data=data,
-    )
-
-
-async def list_audit_events(
-    session: AsyncSession, server_id: RecordId, *, limit: int = 50, offset: int = 0
-) -> tuple[list[AuditEvent], int]:
-    return await servers_repository.list_audit_events(
-        session, server_id, limit=limit, offset=offset
-    )
-
-
-async def get_server_stats(session: AsyncSession, server_id: RecordId) -> dict[str, object]:
-    from sqlalchemy import func, select, text
-
-    from channels.model import Channel
-    from identity.model import Member
-    from messages.model import Message
-
-    members_count = (
-        await session.execute(
-            select(func.count()).select_from(Member).where(Member.server_id == server_id)
-        )
-    ).scalar_one()
-
-    messages_count = (
-        await session.execute(
-            select(func.count())
-            .select_from(Message)
-            .join(Channel, Message.channel_id == Channel.id)
-            .where(Channel.server_id == server_id)
-        )
-    ).scalar_one()
-
-    db_bytes = (
-        await session.execute(text("SELECT pg_database_size(current_database())"))
-    ).scalar_one()
-
-    return {
-        "server_id": server_id,
-        "members": int(members_count),
-        "messages": int(messages_count),
-        "db_bytes": int(db_bytes or 0),
-        "total_bytes": int(db_bytes or 0),
-    }
-
-
-async def create_backup(
-    session: AsyncSession,
-    server_id: RecordId,
-    member: Any,
-) -> dict[str, object]:
-    import json
-    import tarfile
-    import tempfile
-    from pathlib import Path
-
-    from sqlalchemy import select
-
-    from config.bdd_config.bdd_config import Base
-    from config.conf import get_settings
-
-    settings = get_settings()
-    storage_root = Path(settings.storage_root)
-    backup_dir = storage_root / "backups"
-    backup_dir.mkdir(parents=True, exist_ok=True)
-
-    backup_id = str(new_id())
-    backup_path = backup_dir / f"{backup_id}.tar.gz"
-
-    # Export every mapped table to JSON for portability.
-    db_data: dict[str, list[dict[str, object]]] = {}
-    for table in Base.metadata.sorted_tables:
-        result = await session.execute(select(table))
-        db_data[table.name] = [dict(row._mapping) for row in result]
-
-    with tempfile.TemporaryDirectory() as tmp:
-        db_json = Path(tmp) / "database.json"
-        db_json.write_text(json.dumps(db_data, default=str), encoding="utf-8")
-
-        with tarfile.open(backup_path, "w:gz") as tar:
-            import asyncio
-
-            files = await asyncio.to_thread(lambda: list(storage_root.rglob("*")))
-            for path in files:
-                if backup_dir in path.parents or path == backup_dir:
-                    continue
-                if path.is_file():
-                    tar.add(path, arcname=str(path.relative_to(storage_root)))
-            tar.add(db_json, arcname="database.json")
-
-    return {
-        "backup_id": backup_id,
-        "path": str(backup_path),
-        "size": int(backup_path.stat().st_size),
-        "created_at": utcnow(),
-    }
-
-
-async def restore_backup(
-    session: AsyncSession,
-    server_id: RecordId,
-    backup_id: str | None,
-    path: str | None,
-) -> None:
-    import tarfile
-    from pathlib import Path
-
-    from config.conf import get_settings
-
-    settings = get_settings()
-    storage_root = Path(settings.storage_root)
-    backup_dir = storage_root / "backups"
-    backup_path = Path(path) if path else backup_dir / f"{backup_id}.tar.gz"
-    if ".." in backup_path.parts or not str(backup_path).startswith(str(storage_root)):
-        raise ValueError("Invalid backup path")
-
-    if not backup_path.exists():
-        from core.api.errors import NotFoundError
-
-        raise NotFoundError(
-            "That backup does not exist.",
-            code="backup_not_found",
-            extra={"path": str(backup_path)},
-        )
-    with tarfile.open(backup_path, "r:gz") as tar:
-        for member in tar.getmembers():
-            target = storage_root / member.name
-            if not str(target).startswith(str(storage_root)):
-                raise ValueError("Unsafe backup member path")
-        tar.extractall(path=storage_root, filter="data")
+async def delete_invite(session: AsyncSession, code: str) -> None:
+    await servers_repository.delete_invite(session, code)

@@ -2,13 +2,15 @@ from __future__ import annotations
 
 import logging
 from datetime import timedelta
+from pathlib import Path
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from channels.model import Channel
 from common.types import RecordId, utcnow
-from config.conf import Settings
+from config.conf import Settings, get_settings
 from core.api.errors import (
+    AttachmentTooLargeError,
     ConflictError,
     MessageTooLargeError,
     NotFoundError,
@@ -20,7 +22,7 @@ from core.api.errors import (
 from events.outbox import queue_event
 from identity.model import Member
 from messages import repository
-from messages.model import Message
+from messages.model import Attachment, Message
 from messages.schemas import (
     MessageAuthorRead,
     MessageCreate,
@@ -334,3 +336,94 @@ async def remove_reaction(
         channel_id=channel.id,
         data=read.model_dump(mode="json"),
     )
+
+
+async def create_attachment(
+    session: AsyncSession,
+    member: Member,
+    channel: Channel,
+    message_id: RecordId,
+    *,
+    filename: str,
+    content_type: str,
+    data: bytes,
+) -> Attachment:
+    message = await repository.get_message(session, message_id)
+    if message is None or message.channel_id != channel.id:
+        raise NotFoundError(
+            "That message does not exist in this channel.",
+            code="message_not_found",
+            extra={"message_id": str(message_id)},
+        )
+    max_bytes = get_settings().max_attachment_bytes
+    if len(data) > max_bytes:
+        raise AttachmentTooLargeError(
+            f"Attachment is {len(data)} bytes; the limit is {max_bytes}.",
+            extra={"max_bytes": max_bytes},
+        )
+    if not _can_touch_authorship(member, message) and not member.role_enum.can_administer:
+        raise PermissionDeniedError(
+            "You cannot attach files to this message.",
+            code="not_message_author",
+        )
+
+    storage_key = f"{member.server_id}/{message.id}/{filename}"
+    path = Path(get_settings().storage_root) / storage_key
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(data)
+
+    attachment = await repository.create_attachment(
+        session,
+        message_id=message.id,
+        filename=filename,
+        content_type=content_type,
+        size=len(data),
+        storage_key=storage_key,
+    )
+    message.attachments.append(str(attachment.id))
+    await session.flush()
+    return attachment
+
+
+async def get_attachment(session: AsyncSession, attachment_id: RecordId) -> Attachment | None:
+    return await repository.get_attachment(session, attachment_id)
+
+
+async def delete_attachment(session: AsyncSession, member: Member, attachment_id: RecordId) -> None:
+    attachment = await repository.get_attachment(session, attachment_id)
+    if attachment is None:
+        raise NotFoundError(
+            "That attachment does not exist.",
+            code="attachment_not_found",
+            extra={"attachment_id": str(attachment_id)},
+        )
+    message = await repository.get_message(session, attachment.message_id)
+    if message is None:
+        raise NotFoundError(
+            "That message does not exist.",
+            code="message_not_found",
+            extra={"message_id": str(attachment.message_id)},
+        )
+    channel = await repository.get_channel_scoped(session, member.server_id, message.channel_id)
+    if channel is None:
+        raise NotFoundError(
+            "That channel does not exist.",
+            code="channel_not_found",
+            extra={"channel_id": str(message.channel_id)},
+        )
+    if not _can_touch_authorship(member, message) and not member.role_enum.can_administer:
+        raise PermissionDeniedError(
+            "You cannot delete this attachment.",
+            code="not_message_author",
+        )
+    path = Path(get_settings().storage_root) / attachment.storage_key
+    if path.exists():
+        path.unlink()
+    await repository.delete_attachment(session, attachment)
+    message.attachments = [item for item in message.attachments if item != str(attachment.id)]
+    await session.flush()
+
+
+def read_attachment(attachment: Attachment) -> bytes:
+    path = Path(get_settings().storage_root) / attachment.storage_key
+    return path.read_bytes()

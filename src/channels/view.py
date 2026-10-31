@@ -12,6 +12,8 @@ from core.api.deps import SessionDep
 from core.api.errors import PermissionDeniedError
 from identity.deps import CurrentMember
 from identity.model import Member
+from servers import repository as servers_repository
+from servers.service import ensure_active
 
 router = APIRouter()
 
@@ -42,7 +44,8 @@ async def create_channel(
 ) -> Channel:
     _require_same_server(member, server_id)
     service.ensure_can_manage_channels(member)
-    return await service.create_channel(session, server_id, payload)
+    channel = await service.create_channel(session, server_id, payload)
+    return channel
 
 
 @router.get(
@@ -86,6 +89,8 @@ async def join_channel(
     session: SessionDep,
 ) -> Channel:
     _require_same_server(member, server_id)
+    server = await servers_repository.get_server(session, server_id)
+    ensure_active(server)
     return await service.get_channel(session, server_id, channel_id)
 
 
@@ -104,7 +109,8 @@ async def update_channel(
     _require_same_server(member, server_id)
     service.ensure_can_manage_channels(member)
     channel = await service.get_channel(session, server_id, channel_id)
-    return await service.update_channel(session, channel, payload)
+    updated = await service.update_channel(session, channel, payload)
+    return updated
 
 
 @router.delete(

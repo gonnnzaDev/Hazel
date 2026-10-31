@@ -2,14 +2,16 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Path, Query, status
+from fastapi import APIRouter, File, Form, Path, Query, Response, UploadFile, status
 
 from channels.model import Channel
 from common.types import RecordId
 from core.api.deps import SessionDep, SettingsDep
+from core.api.errors import NotFoundError
 from identity.deps import CurrentMember
-from messages import service
+from messages import repository, service
 from messages.schemas import (
+    AttachmentRead,
     MessageCreate,
     MessageListResponse,
     MessageRead,
@@ -21,6 +23,8 @@ router = APIRouter()
 
 ChannelId = Annotated[RecordId, Path(description="Channel identifier")]
 MessageId = Annotated[RecordId, Path(description="Message identifier")]
+AttachmentId = Annotated[RecordId, Path(description="Attachment identifier")]
+AttachmentMessageId = Annotated[RecordId, Form()]
 QueryLimit = Annotated[int, Query(ge=1, le=100, description="Max messages per page")]
 QueryBefore = Annotated[RecordId | None, Query(description="Return messages older than this id")]
 
@@ -39,7 +43,8 @@ async def create_message(
     settings: SettingsDep,
 ) -> MessageRead:
     channel = await service.get_reachable_channel(session, member.server_id, channel_id)
-    return await service.create_message(session, member, channel, payload, settings)
+    result = await service.create_message(session, member, channel, payload, settings)
+    return result
 
 
 @router.get(
@@ -95,7 +100,8 @@ async def edit_message(
     settings: SettingsDep,
 ) -> MessageRead:
     channel = await service.get_reachable_channel(session, member.server_id, channel_id)
-    return await service.edit_message(session, member, channel, message_id, payload, settings)
+    result = await service.edit_message(session, member, channel, message_id, payload, settings)
+    return result
 
 
 @router.delete(
@@ -127,7 +133,8 @@ async def add_reaction(
     session: SessionDep,
 ) -> MessageRead:
     channel = await service.get_reachable_channel(session, member.server_id, channel_id)
-    return await service.add_reaction(session, member, channel, message_id, payload.emoji)
+    result = await service.add_reaction(session, member, channel, message_id, payload.emoji)
+    return result
 
 
 @router.delete(
@@ -144,3 +151,86 @@ async def remove_reaction(
 ) -> None:
     channel = await service.get_reachable_channel(session, member.server_id, channel_id)
     await service.remove_reaction(session, member, channel, message_id, emoji)
+
+
+@router.post(
+    "/channels/{channel_id}/attachments",
+    response_model=AttachmentRead,
+    status_code=status.HTTP_201_CREATED,
+    summary="Upload an attachment",
+)
+async def create_attachment(
+    channel_id: ChannelId,
+    attachment_message_id: AttachmentMessageId,
+    file: Annotated[UploadFile, File()],
+    member: CurrentMember,
+    session: SessionDep,
+) -> AttachmentRead:
+    channel = await service.get_reachable_channel(session, member.server_id, channel_id)
+    attachment = await service.create_attachment(
+        session,
+        member,
+        channel,
+        attachment_message_id,
+        filename=file.filename or "attachment",
+        content_type=file.content_type or "application/octet-stream",
+        data=await file.read(),
+    )
+    return AttachmentRead(
+        id=attachment.id,
+        message_id=attachment.message_id,
+        filename=attachment.filename,
+        content_type=attachment.content_type,
+        size=attachment.size,
+        storage_key=attachment.storage_key,
+    )
+
+
+@router.get(
+    "/attachments/{attachment_id}",
+    summary="Download an attachment",
+)
+async def get_attachment(
+    attachment_id: AttachmentId,
+    member: CurrentMember,
+    session: SessionDep,
+) -> Response:
+    attachment = await service.get_attachment(session, attachment_id)
+    if attachment is None:
+        raise NotFoundError(
+            "That attachment does not exist.",
+            code="attachment_not_found",
+            extra={"attachment_id": str(attachment_id)},
+        )
+    message = await repository.get_message(session, attachment.message_id)
+    if message is None:
+        raise NotFoundError(
+            "That message does not exist.",
+            code="message_not_found",
+            extra={"message_id": str(attachment.message_id)},
+        )
+    channel = await repository.get_channel_scoped(session, member.server_id, message.channel_id)
+    if channel is None:
+        raise NotFoundError(
+            "That attachment does not exist.",
+            code="attachment_not_found",
+            extra={"attachment_id": str(attachment_id)},
+        )
+    return Response(
+        content=service.read_attachment(attachment),
+        media_type=attachment.content_type,
+        headers={"Content-Disposition": f'attachment; filename="{attachment.filename}"'},
+    )
+
+
+@router.delete(
+    "/attachments/{attachment_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Delete an attachment",
+)
+async def delete_attachment(
+    attachment_id: AttachmentId,
+    member: CurrentMember,
+    session: SessionDep,
+) -> None:
+    await service.delete_attachment(session, member, attachment_id)
