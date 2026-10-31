@@ -19,10 +19,24 @@ from servers.schemas import (
     ServerCreate,
     ServerListResponse,
     ServerRead,
+    ServerStats,
     ServerUpdate,
 )
 
 router = APIRouter()
+invites_router = APIRouter()
+
+
+def _require_same_server(member: Member, server_id: RecordId) -> None:
+    if member.server_id != server_id:
+        from core.api.errors import PermissionDeniedError
+
+        raise PermissionDeniedError(
+            "This token belongs to another server.",
+            code="wrong_server",
+            extra={"server_id": str(server_id)},
+        )
+
 
 ServerId = Annotated[RecordId, Path(description="Server identifier")]
 InviteCode = Annotated[str, Path(min_length=4, max_length=32, description="Invite code")]
@@ -97,6 +111,14 @@ async def update_server(
         server_id=updated.id,
         data=data,
     )
+    await service.record_audit(
+        session,
+        server_id=updated.id,
+        actor_nickname="admin",
+        action="server.updated",
+        target_type="server",
+        target_id=str(updated.id),
+    )
     return ServerRead.model_validate(updated)
 
 
@@ -118,6 +140,14 @@ async def activate_server(
         server_id=activated.id,
         data={"server_id": str(activated.id), "status": activated.status.value},
     )
+    await service.record_audit(
+        session,
+        server_id=activated.id,
+        actor_nickname="admin",
+        action="server.activated",
+        target_type="server",
+        target_id=str(activated.id),
+    )
     return ServerRead.model_validate(activated)
 
 
@@ -138,6 +168,14 @@ async def deactivate_server(
         event_type="server.state_changed",
         server_id=deactivated.id,
         data={"server_id": str(deactivated.id), "status": deactivated.status.value},
+    )
+    await service.record_audit(
+        session,
+        server_id=deactivated.id,
+        actor_nickname="admin",
+        action="server.deactivated",
+        target_type="server",
+        target_id=str(deactivated.id),
     )
     return ServerRead.model_validate(deactivated)
 
@@ -169,6 +207,14 @@ async def delete_server(
 ) -> None:
     server = await repository.get_server(session, server_id)
     await service.delete_server(session, server)
+    await service.record_audit(
+        session,
+        server_id=server_id,
+        actor_nickname="admin",
+        action="server.deleted",
+        target_type="server",
+        target_id=str(server_id),
+    )
     await queue_event(
         session,
         event_type="server.state_changed",
