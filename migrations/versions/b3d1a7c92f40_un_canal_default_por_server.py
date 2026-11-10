@@ -7,7 +7,7 @@ from alembic import context as alembic_context
 from alembic import op
 
 revision: str = "b3d1a7c92f40"
-down_revision: str | None = "a8e49410ba2b"
+down_revision: str | None = "96e62262a6ce"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
