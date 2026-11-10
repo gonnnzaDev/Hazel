@@ -22,6 +22,7 @@ from identity.schemas import (
     TokenResponse,
 )
 from servers import repository as servers_repository
+from servers import service as servers_service
 
 router = APIRouter()
 
@@ -62,6 +63,14 @@ async def join(session: SessionDep, server_id: ServerId, payload: JoinRequest) -
         server_id=server.id,
         data={"member": _member_read(member).model_dump(mode="json")},
     )
+    await servers_service.record_audit(
+        session,
+        server_id=server.id,
+        actor_nickname=member.nickname,
+        action="member.joined",
+        target_type="member",
+        target_id=str(member.id),
+    )
 
     return JoinResponse(
         token=token,
@@ -86,6 +95,14 @@ async def leave(member: CurrentMember, session: SessionDep) -> None:
         event_type="member.left",
         server_id=server_id,
         data={"member": member_data, "reason": "left"},
+    )
+    await servers_service.record_audit(
+        session,
+        server_id=server_id,
+        actor_nickname=member.nickname,
+        action="member.left",
+        target_type="member",
+        target_id=str(member.id),
     )
 
 
@@ -188,6 +205,15 @@ async def kick_member(
             "actor": {"nickname": actor.nickname, "display_name": actor.display_name},
         },
     )
+    await servers_service.record_audit(
+        session,
+        server_id=server_id,
+        actor_nickname=actor.nickname,
+        action="member.kicked",
+        target_type="member",
+        target_id=str(target.id),
+        data={"target": target.nickname},
+    )
 
 
 @router.put(
@@ -204,7 +230,17 @@ async def set_member_role(
 ) -> MemberRead:
     new_role = _parse_role(role)
     target = await repository.get_member_by_nickname(session, server_id, nickname)
-    return _member_read(await service.set_role(session, actor, target, new_role))
+    updated = await service.set_role(session, actor, target, new_role)
+    await servers_service.record_audit(
+        session,
+        server_id=server_id,
+        actor_nickname=actor.nickname,
+        action="member.role_changed",
+        target_type="member",
+        target_id=str(target.id),
+        data={"role": new_role.label},
+    )
+    return _member_read(updated)
 
 
 def _parse_role(label: str) -> Role:

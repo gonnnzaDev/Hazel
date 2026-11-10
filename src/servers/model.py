@@ -17,6 +17,7 @@ from sqlalchemy import (
 from sqlalchemy import (
     Enum as SAEnum,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from common.types import RecordId, new_id
@@ -30,6 +31,56 @@ if TYPE_CHECKING:
 
 def _enum_values(enum_cls: type[StrEnum]) -> list[str]:
     return [member.value for member in enum_cls]
+
+
+class Invite(Base):
+    __tablename__ = "invites"
+
+    id: Mapped[RecordId] = mapped_column(primary_key=True, default=new_id)
+
+    server_id: Mapped[RecordId] = mapped_column(
+        ForeignKey("servers.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+
+    code: Mapped[str] = mapped_column(String(16), nullable=False, unique=True, index=True)
+
+    created_by: Mapped[str] = mapped_column(String(64), nullable=False)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=datetime.now
+    )
+
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+    single_use: Mapped[bool] = mapped_column(nullable=False, default=False)
+
+    consumed: Mapped[bool] = mapped_column(nullable=False, default=False)
+
+    password_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
+
+class AuditEvent(Base):
+    __tablename__ = "audit_events"
+
+    id: Mapped[RecordId] = mapped_column(primary_key=True, default=new_id)
+
+    server_id: Mapped[RecordId] = mapped_column(
+        ForeignKey("servers.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+
+    actor_nickname: Mapped[str | None] = mapped_column(String(64), nullable=True)
+
+    action: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
+
+    target_type: Mapped[str | None] = mapped_column(String(64), nullable=True)
+
+    target_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+
+    data: Mapped[dict[str, object]] = mapped_column(JSONB, nullable=False, default=dict)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=datetime.now
+    )
 
 
 class Server(Base):

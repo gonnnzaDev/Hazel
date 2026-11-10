@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import re
+import secrets
 import unicodedata
 from datetime import timedelta
 from uuid import uuid4
@@ -10,6 +11,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from channels import repository as channels_repository
+from common.security import hash_password, verify_password
 from common.types import RecordId, new_id, utcnow
 from core.api.errors import (
     ConflictError,
@@ -45,15 +47,20 @@ async def slug_taken(session: AsyncSession, slug: str, *, exclude: RecordId | No
     return (await session.execute(stmt)).scalar_one() > 0
 
 
-async def create_server(session: AsyncSession, payload: ServerCreate, *, port: int) -> Server:
-    slug = normalize_slug(payload.slug)
+def _validate_slug(raw: str) -> str:
+    slug = normalize_slug(raw)
     if len(slug) < MIN_SLUG_LENGTH or len(slug) > MAX_SLUG_LENGTH:
         raise ValidationDomainError(
             "Server identifier must be between "
             f"{MIN_SLUG_LENGTH} and {MAX_SLUG_LENGTH} characters.",
             code="invalid_slug",
-            extra={"slug": payload.slug},
+            extra={"slug": raw},
         )
+    return slug
+
+
+async def create_server(session: AsyncSession, payload: ServerCreate, *, port: int) -> Server:
+    slug = _validate_slug(payload.slug)
 
     if await slug_taken(session, slug):
         raise ConflictError(

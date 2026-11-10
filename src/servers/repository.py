@@ -9,7 +9,7 @@ from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from common.types import RecordId, utcnow
+from common.types import RecordId, new_id, utcnow
 from core.api.errors import NotFoundError
 from servers.model import Invite, Server
 from servers.schemas import ServerUpdate
@@ -112,6 +112,66 @@ async def heartbeat(session: AsyncSession, server: Server, *, at: datetime | Non
     server.last_heartbeat_at = at or utcnow()
     await session.flush()
     return server
+
+
+async def get_invite_by_code(session: AsyncSession, code: str) -> Invite | None:
+    stmt = select(Invite).where(Invite.code == code)
+    return (await session.execute(stmt)).scalar_one_or_none()
+
+
+async def delete_invite(session: AsyncSession, invite: Invite) -> None:
+    await session.delete(invite)
+    await session.flush()
+
+
+async def create_audit_event(
+    session: AsyncSession,
+    *,
+    server_id: RecordId,
+    actor_nickname: str | None,
+    action: str,
+    target_type: str | None = None,
+    target_id: str | None = None,
+    data: dict[str, object] | None = None,
+) -> AuditEvent:
+    event = AuditEvent(
+        id=new_id(),
+        server_id=server_id,
+        actor_nickname=actor_nickname,
+        action=action,
+        target_type=target_type,
+        target_id=target_id,
+        data=data or {},
+    )
+    session.add(event)
+    await session.flush()
+    return event
+
+
+async def list_audit_events(
+    session: AsyncSession, server_id: RecordId, *, limit: int, offset: int
+) -> tuple[list[AuditEvent], int]:
+    from sqlalchemy import func
+
+    total = (
+        await session.execute(
+            select(func.count()).select_from(AuditEvent).where(AuditEvent.server_id == server_id)
+        )
+    ).scalar_one()
+    rows = (
+        (
+            await session.execute(
+                select(AuditEvent)
+                .where(AuditEvent.server_id == server_id)
+                .order_by(AuditEvent.created_at.desc(), AuditEvent.id.desc())
+                .limit(limit)
+                .offset(offset)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    return list(rows), int(total)
 
 
 async def mark_all_inactive(session: AsyncSession) -> int:
