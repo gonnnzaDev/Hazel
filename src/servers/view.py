@@ -13,12 +13,17 @@ from node import service as node_service
 from node.schemas import NodeAddress
 from servers import repository, service
 from servers.schemas import (
+    AuditEventListResponse,
+    AuditEventRead,
+    BackupRead,
     InviteCreate,
     InviteRead,
+    RestoreRequest,
     ServerAddress,
     ServerCreate,
     ServerListResponse,
     ServerRead,
+    ServerStats,
     ServerUpdate,
 )
 
@@ -26,8 +31,8 @@ router = APIRouter()
 
 ServerId = Annotated[RecordId, Path(description="Server identifier")]
 InviteCode = Annotated[str, Path(min_length=4, max_length=32, description="Invite code")]
-QueryLimit = Annotated[int, Query(ge=1, le=100, description="Max servers per page")]
-QueryOffset = Annotated[int, Query(ge=0, description="How many servers to skip")]
+QueryLimit = Annotated[int, Query(ge=1, le=100, description="Max items per page")]
+QueryOffset = Annotated[int, Query(ge=0, description="How many items to skip")]
 
 
 @router.post(
@@ -186,6 +191,71 @@ async def get_address(server_id: ServerId, session: SessionDep) -> ServerAddress
     server = await repository.get_server(session, server_id)
     node = NodeAddress.model_validate(node_service.node_address())
     return ServerAddress.from_server(server, node)
+
+
+@router.get(
+    "/{server_id}/stats",
+    response_model=ServerStats,
+    summary="Server stats",
+)
+async def get_stats(
+    server_id: ServerId,
+    session: SessionDep,
+    _admin: AdminAuth,
+) -> ServerStats:
+    return await service.get_server_stats(session, server_id)
+
+
+@router.get(
+    "/{server_id}/events",
+    response_model=AuditEventListResponse,
+    summary="Audit events",
+)
+async def list_events(
+    server_id: ServerId,
+    session: SessionDep,
+    _admin: AdminAuth,
+    limit: QueryLimit = 50,
+    offset: QueryOffset = 0,
+) -> AuditEventListResponse:
+    await repository.get_server(session, server_id)
+    items, total = await repository.list_audit_events(
+        session, server_id, limit=limit, offset=offset
+    )
+    return AuditEventListResponse(
+        items=[AuditEventRead.model_validate(e) for e in items],
+        total=total,
+        limit=limit,
+        offset=offset,
+    )
+
+
+@router.post(
+    "/{server_id}/backup",
+    response_model=BackupRead,
+    summary="Create backup",
+)
+async def create_backup(
+    server_id: ServerId,
+    session: SessionDep,
+    _admin: AdminAuth,
+) -> BackupRead:
+    return await service.create_backup(session, server_id)
+
+
+@router.post(
+    "/{server_id}/restore",
+    response_model=ServerRead,
+    summary="Restore backup",
+)
+async def restore_backup(
+    server_id: ServerId,
+    payload: RestoreRequest,
+    session: SessionDep,
+    _admin: AdminAuth,
+) -> ServerRead:
+    server = await service.restore_backup(session, server_id, payload)
+    return ServerRead.model_validate(server)
 
 
 @router.post(

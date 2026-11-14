@@ -17,6 +17,7 @@ from sqlalchemy import (
 from sqlalchemy import (
     Enum as SAEnum,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from common.types import RecordId, new_id
@@ -103,3 +104,27 @@ class Invite(Base):
     consumed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
     server: Mapped[Server] = relationship(back_populates="invites")
+
+
+class AuditEvent(Base):
+    __tablename__ = "audit_events"
+
+    id: Mapped[RecordId] = mapped_column(primary_key=True, default=new_id)
+
+    server_id: Mapped[RecordId] = mapped_column(
+        ForeignKey("servers.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+
+    actor_nickname: Mapped[str | None] = mapped_column(String(64), nullable=True)
+
+    action: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
+
+    target_type: Mapped[str | None] = mapped_column(String(64), nullable=True)
+
+    target_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+
+    data: Mapped[dict[str, object]] = mapped_column(JSONB, nullable=False, default=dict)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=datetime.now
+    )

@@ -110,3 +110,44 @@ class InviteRead(BaseModel):
     expires_at: datetime
     single_use: bool
     consumed: bool
+
+
+class ServerStats(BaseModel):
+    server_id: RecordId
+    members: int
+    messages: int
+    attachment_bytes: int
+    db_bytes: int
+    total_bytes: int
+
+
+class BackupRead(BaseModel):
+    backup_id: str
+    path: str
+    size: int
+    created_at: datetime
+
+
+class RestoreRequest(BaseModel):
+    backup_id: str | None = None
+    path: str | None = None
+
+
+class AuditEventRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: RecordId
+    server_id: RecordId
+    actor_nickname: str | None
+    action: str
+    target_type: str | None
+    target_id: str | None
+    data: dict[str, object]
+    created_at: datetime
+
+
+class AuditEventListResponse(BaseModel):
+    items: list[AuditEventRead]
+    total: int
+    limit: int
+    offset: int
