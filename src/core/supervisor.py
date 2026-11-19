@@ -12,6 +12,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from common.types import RecordId
+from events.bus import publish_node_state
 
 logger = logging.getLogger(__name__)
 
@@ -58,6 +59,7 @@ class GroupSupervisor:
 
         self._shutdown.clear()
         self._supervisor_task = asyncio.create_task(self._supervise_loop(), name="group-supervisor")
+        publish_node_state("up", reason="node_started")
         logger.info("group supervisor started")
 
     async def stop(self) -> None:
@@ -71,6 +73,7 @@ class GroupSupervisor:
 
         await asyncio.gather(*(self._terminate(g) for g in list(self._groups.values())))
         self._groups.clear()
+        publish_node_state("down", reason="node_stopped")
         logger.info("group supervisor stopped")
 
     async def spawn(self, server_id: RecordId, port: int) -> GroupProcess:
@@ -95,6 +98,7 @@ class GroupSupervisor:
         group = GroupProcess(server_id=server_id, port=port, process=process)
         self._groups[server_id] = group
 
+        publish_node_state("group_up", server_id=str(server_id), port=port)
         logger.info("group %s started on port %s (pid %s)", server_id, port, process.pid)
         return group
 
@@ -105,6 +109,7 @@ class GroupSupervisor:
 
         await self._terminate(group)
         del self._groups[server_id]
+        publish_node_state("group_down", server_id=str(server_id), reason="terminated")
         return True
 
     async def restart(self, server_id: RecordId, port: int) -> GroupProcess:
@@ -195,6 +200,12 @@ class GroupSupervisor:
                     group.returncode,
                 )
                 del self._groups[server_id]
+                publish_node_state(
+                    "group_down",
+                    server_id=str(server_id),
+                    reason="process_exit",
+                    exit_code=group.returncode,
+                )
 
     @staticmethod
     async def _probe(url: str) -> bool:

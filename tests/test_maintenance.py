@@ -6,6 +6,7 @@ import asyncio
 import json
 from pathlib import Path
 
+import pytest
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -57,16 +58,38 @@ async def test_audit_events(
     assert body["items"][0]["data"] == {"origin": "test"}
 
 
-async def test_backup_writes_file_and_restore_reads_it(
-    client: AsyncClient, server_id: RecordId
+async def test_backup_writes_dump_and_restore_reads_it(
+    client: AsyncClient, server_id: RecordId, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    import servers.service as servers_service
+
+    calls: list[tuple[str, list[str]]] = []
+
+    monkeypatch.setattr(
+        servers_service,
+        "_pg_dsn",
+        lambda: ("postgresql://hazel@localhost/hazel", {}),
+    )
+
+    async def fake_pg_tool(program: str, args: list[str], env: dict[str, str]) -> None:
+        calls.append((program, args))
+        if program == "pg_dump":
+            await asyncio.to_thread(
+                Path(args[0].split("=", 1)[1]).write_bytes,
+                b"fake pg_dump output",
+            )
+
+    monkeypatch.setattr(servers_service, "_run_pg_tool", fake_pg_tool)
+
     created = await client.post(f"{BASE}/{server_id}/backup", headers=ADMIN_HEADERS)
     assert created.status_code == 200
     backup = created.json()
     path = Path(backup["path"])
+    assert path.suffix == ".dump"
     assert await asyncio.to_thread(path.is_file)
-    content = await asyncio.to_thread(path.read_text)
-    assert json.loads(content)["server_id"] == str(server_id)
+    manifest = json.loads(path.with_suffix(".json").read_text())
+    assert manifest["server_id"] == str(server_id)
+    assert calls[0][0] == "pg_dump"
 
     restored = await client.post(
         f"{BASE}/{server_id}/restore",
@@ -75,6 +98,7 @@ async def test_backup_writes_file_and_restore_reads_it(
     )
     assert restored.status_code == 200
     assert restored.json()["id"] == str(server_id)
+    assert calls[-1][0] == "pg_restore"
 
 
 async def test_restore_validation(client: AsyncClient, server_id: RecordId) -> None:

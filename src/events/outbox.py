@@ -58,17 +58,22 @@ async def drain_pending(session: AsyncSession) -> None:
     if not rows:
         return
 
+    from events.kafka_bus import get_kafka_fanout
+
+    fanout = get_kafka_fanout()
     for row in rows:
+        event = envelope(
+            row.event_type,
+            server_id=row.server_id,
+            channel_id=row.channel_id,
+            data=dict(row.data or {}),
+        )
         bus.publish(
             server_id=row.server_id,
             channel_id=row.channel_id,
-            event=envelope(
-                row.event_type,
-                server_id=row.server_id,
-                channel_id=row.channel_id,
-                data=dict(row.data or {}),
-            ),
+            event=event,
         )
+        await fanout.publish(event)
 
     await session.execute(delete(OutboxEvent).where(OutboxEvent.id.in_([row.id for row in rows])))
     await session.flush()

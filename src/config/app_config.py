@@ -11,6 +11,7 @@ class AppSection(BaseModel):
     secret_key: str = Field(min_length=1)
     admin_token: str = ""
     storage_root: str = Field(default="/data/hazel", min_length=1)
+    backup_retention_days: int = Field(default=3, ge=1)
 
     @property
     def is_production(self) -> bool:

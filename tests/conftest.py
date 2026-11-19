@@ -36,6 +36,7 @@ os.environ.update(
     HAZEL_DATABASE_URL="sqlite+aiosqlite://",
     HAZEL_STORAGE_ROOT=str(STORAGE_ROOT),
     HAZEL_ENV="test",
+    HAZEL_KAFKA_FANOUT_ENABLED="false",
 )
 
 

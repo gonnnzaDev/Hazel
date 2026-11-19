@@ -396,15 +396,18 @@ Channel-scoped events go only to sockets that have subscribed to the channel.
 | `member.left` | Someone left or was kicked. |
 | `server.updated` | Name, description or limits changed. |
 | `server.state_changed` | Server was created, activated, deactivated or deleted. |
+| `node.state_changed` | Node/group process lifecycle. Data: `state` (`up`, `down`, `group_up`, `group_down`), `reason` and, for group states, `server_id`. |
 | `channel.subscribed` | The server accepted a `channel.subscribe` request. |
 | `channel.unsubscribed` | The subscription was removed. |
 | `heartbeat` | Acknowledgement of a client heartbeat. Data: `server_time`. |
 | `error` | A client event was invalid. Data: `code`, `detail`. |
 
-Planned, not emitted yet because their HTTP endpoints are not implemented:
-`node.state_changed` (waiting for supervisor hooks). `message.updated`,
-`message.deleted`, `reaction.added`, `reaction.removed` and `server.updated` are
-emitted through the outbox since their endpoints landed.
+`message.updated`, `message.deleted`, `reaction.added`, `reaction.removed` and
+`server.updated` are emitted through the outbox. `node.state_changed` is emitted
+by the supervisor hooks: node start/stop (`up`/`down`) and group spawn,
+termination or unexpected exit (`group_up`/`group_down`). Because the envelope
+needs a `server_id`, a node-level event is delivered once per server that has
+local sockets.
 
 ### Client events
 
@@ -458,12 +461,16 @@ a new event doesn't crash.
 - **Delivery rides the outbox**: events are written in the same transaction as
   the change and fan out after the commit, at-least-once. There is no replay for
   disconnected clients in v1 (no retained history of events).
+- **Cross-process delivery rides Kafka**: after the local fan-out, the outbox
+  publishes the same envelope to `hazel.events`. Every process runs a consumer
+  with its own consumer group, so a socket on the node sees events produced in a
+  group process (and the other way around). Messages from the producing process
+  are skipped to avoid an echo. `HAZEL_KAFKA_FANOUT_ENABLED=false` turns it off
+  for local development; `/health/ready` reports `ok`, `disabled` or `error`.
 - **`server.state_changed`** is emitted from the servers service lifecycle
   (activate / deactivate / delete). **`server.updated`** is emitted by
-  `PATCH /servers/{id}`. **`node.state_changed`** has no emission point yet (`[~]`).
-- **The bus is in-process** (per-process). It serves the process where the
-  change happened and where the socket connects; cross-process fan-out between
-  the node and group processes stays open for a later bus transport.
+  `PATCH /servers/{id}`. **`node.state_changed`** is emitted from the node
+  supervisor hooks (`src/core/supervisor.py`).
 
 ---
 
@@ -559,9 +566,9 @@ which validates nickname availability per server.
 | `[x]` | `GET /api/v1/attachments/{attachment_id}` | Download. |
 | `[x]` | `DELETE /api/v1/attachments/{attachment_id}` | Delete. |
 
-> **Pending your decision:** do files live on node disk, or external storage (S3
-> and compatibles)? On a self-hosted node, local disk is simple, but capped by
-> the owner's PC space.
+> **Decision resolved:** files live on the node's local disk, under
+> `HAZEL_STORAGE_ROOT`. No S3-compatible storage in v1: a self-hosted node keeps
+> the owner's data on the owner's PC, capped by its free space.
 
 ---
 
@@ -575,9 +582,13 @@ which validates nickname availability per server.
 | `[x]` | `GET /api/v1/servers/{server_id}/events` | Audit. |
 
 This isn't secondary: it's what gives the owner confidence their data is on
-their PC and recoverable. Backups must cover the last 3 days of changes; the
-storage mechanism and the endpoint contract are still to be implemented (see
-`architecture.md` §9).
+their PC and recoverable. `POST /backup` runs `pg_dump --format=custom` and
+stores a `.dump` plus a small JSON manifest under
+`HAZEL_STORAGE_ROOT/backups/{server_id}/`. Backups older than
+`HAZEL_BACKUP_RETENTION_DAYS` (default 3) are pruned on each new backup.
+`POST /restore` validates the manifest's `server_id` and runs `pg_restore
+--clean --if-exists`. The runtime image includes `postgresql-client` for both
+tools.
 
 ---
 
@@ -653,6 +664,8 @@ Codes actually emitted by the API, grouped by HTTP status.
 | `invalid_slug` | 422 | Slug normalizes to empty. |
 | `reply_target_invalid` / `reply_target_deleted` | 422 | Bad `reply_to`. |
 | `invalid_restore_request` / `invalid_backup_path` / `invalid_backup_file` / `backup_server_mismatch` | 422 | Backup validation failed. |
+| `backup_requires_postgres` | 422 | Backup requested on a non-PostgreSQL database. |
+| `backup_tool_failed` | 500 | `pg_dump` or `pg_restore` exited with an error. |
 | `internal_error` | 500 | Unhandled error. |
 
 `port_taken` and `not_owner` were in an earlier version of this catalog but
@@ -675,8 +688,7 @@ types from OpenAPI without effort.
 
 ## 13. What still needs deciding
 
-These are product questions, not implementation ones. Left open until you
-resolve them:
+All the product questions from earlier revisions are now resolved:
 
 1. ~~Kafka on the user's PC.~~ **Resolved:** every PC runs a complete Kafka.
    There is no embedded mode or local fallback. See `architecture.md` §4.
@@ -687,9 +699,12 @@ resolve them:
    recommendation and lets the owner override it.
 4. ~~Server discovery.~~ **Resolved:** invite codes (option B). Invites are
    temporary (`ttl_seconds`) and admin/owner-only. See section 8.
-5. **Where files live.** See section 9.
-6. **Custom roles.** Needed, or are three roles enough for v1?
+5. ~~Where files live.~~ **Resolved:** local disk under `HAZEL_STORAGE_ROOT`.
+   See section 9.
+6. ~~Custom roles.~~ **Resolved:** three roles (`member`, `admin`, `owner`) are
+   enough for v1; custom roles come later. See section 4.
 7. ~~Personal name vs nickname.~~ **Resolved:** nickname is per server and is
    requested first on join. There is no global personal name for now.
-8. **Backup mechanism.** The 3-day window is decided; whether it is WAL/PITR
-   or scheduled dumps is still open.
+8. ~~Backup mechanism.~~ **Resolved:** scheduled logical dumps with
+   `pg_dump`/`pg_restore` and a 3-day retention window, not WAL/PITR. See
+   section 10.

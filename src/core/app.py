@@ -57,8 +57,11 @@ def create_node_app(settings: Settings | None = None) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         from config.bdd_config.bdd_config import dispose_engine
+        from events.kafka_bus import get_kafka_fanout
 
         supervisor: GroupSupervisor | None = getattr(app.state, "supervisor", None)
+        fanout = get_kafka_fanout(settings)
+        await fanout.start()
         try:
             if supervisor is not None:
                 await supervisor.start()
@@ -66,6 +69,7 @@ def create_node_app(settings: Settings | None = None) -> FastAPI:
         finally:
             if supervisor is not None:
                 await supervisor.stop()
+            await fanout.stop()
             await dispose_engine()
 
     return _base_app(settings, lifespan=lifespan)
@@ -77,11 +81,15 @@ def create_group_app(*, server_id: str, settings: Settings | None = None) -> Fas
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         from config.bdd_config.bdd_config import dispose_engine
+        from events.kafka_bus import get_kafka_fanout
 
         app.state.server_id = server_id
+        fanout = get_kafka_fanout(settings)
+        await fanout.start()
         try:
             yield
         finally:
+            await fanout.stop()
             await dispose_engine()
 
     app = _base_app(settings, lifespan=lifespan)
@@ -95,8 +103,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         from config.bdd_config.bdd_config import dispose_engine, session_scope
+        from events.kafka_bus import get_kafka_fanout
         from servers.repository import mark_all_inactive
 
+        fanout = get_kafka_fanout(settings)
+        await fanout.start()
         try:
             async with session_scope() as session:
                 await mark_all_inactive(session)
@@ -106,6 +117,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         try:
             yield
         finally:
+            await fanout.stop()
             await dispose_engine()
 
     return _base_app(settings, lifespan=lifespan)

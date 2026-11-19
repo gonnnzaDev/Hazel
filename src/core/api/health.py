@@ -33,7 +33,9 @@ async def readiness(response: Response, session: SessionDep) -> dict[str, object
         checks["database"] = f"error: {type(exc).__name__}"
         ready = False
 
-    checks["kafka"] = "not_wired"
+    from events.kafka_bus import get_kafka_fanout
+
+    checks["kafka"] = get_kafka_fanout().state
 
     if not ready:
         response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE

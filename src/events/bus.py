@@ -130,6 +130,19 @@ class EventBus:
         for sub in targets:
             self._enqueue(sub, event)
 
+    def publish_to_all(self, *, event_type: str, data: dict[str, Any]) -> None:
+        """Fan a node-level event out to every server with a local socket.
+
+        The envelope needs a server_id. For events that belong to the node as a
+        whole, one copy is delivered per server that currently has subscribers,
+        so each socket sees it in its own server scope.
+        """
+        for server_id in {sub.server_id for sub in self._subs.values()}:
+            self.publish(
+                server_id=server_id,
+                event=envelope(event_type, server_id=server_id, data=data),
+            )
+
     def _enqueue(self, sub: Subscription, payload: dict[str, Any]) -> None:
         try:
             sub.queue.put_nowait(payload)
@@ -144,6 +157,11 @@ class EventBus:
 
 
 bus = EventBus()
+
+
+def publish_node_state(state: str, **data: Any) -> None:
+    """Emit `node.state_changed` from a supervisor lifecycle hook."""
+    bus.publish_to_all(event_type="node.state_changed", data={"state": state, **data})
 
 
 def enqueue_direct(sub: Subscription, payload: dict[str, Any]) -> None:

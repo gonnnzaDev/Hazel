@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
+import os
 import re
 import unicodedata
 from datetime import UTC, datetime, timedelta
@@ -295,24 +297,81 @@ def _backup_dir(server_id: RecordId) -> Path:
     return path
 
 
+def _pg_dsn() -> tuple[str, dict[str, str]]:
+    """Build a libpq DSN; the password travels in PGPASSWORD, not in argv."""
+    from urllib.parse import quote, unquote, urlsplit
+
+    parts = urlsplit(get_settings().database_url)
+    if not parts.scheme.startswith("postgresql"):
+        raise DomainError(
+            "Backups require PostgreSQL.",
+            code="backup_requires_postgres",
+            status_code=422,
+        )
+    authority = f"{quote(parts.username or '')}@{parts.hostname}:{parts.port or 5432}"
+    dsn = f"postgresql://{authority}{parts.path}"
+    env = dict(os.environ)
+    if parts.password:
+        env["PGPASSWORD"] = unquote(parts.password)
+    return dsn, env
+
+
+async def _run_pg_tool(program: str, args: list[str], env: dict[str, str]) -> None:
+    process = await asyncio.create_subprocess_exec(
+        program,
+        *args,
+        env=env,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    _, stderr = await process.communicate()
+    if process.returncode:
+        detail = stderr.decode("utf-8", errors="replace").strip()[-500:]
+        raise DomainError(
+            f"{program} failed: {detail}",
+            code="backup_tool_failed",
+            status_code=500,
+        )
+
+
+def _prune_old_backups(base: Path, days: int) -> None:
+    cutoff = (datetime.now(UTC) - timedelta(days=days)).timestamp()
+    for item in base.iterdir():
+        if item.is_file() and item.stat().st_mtime < cutoff:
+            item.unlink()
+
+
 async def create_backup(session: AsyncSession, server_id: RecordId) -> BackupRead:
     server = await servers_repository.get_server(session, server_id)
     backup_id = uuid4().hex
     created_at = datetime.now(UTC)
-    payload = {
-        "backup_id": backup_id,
-        "server_id": str(server.id),
-        "slug": server.slug,
-        "name": server.name,
-        "status": server.status.value,
-        "created_at": created_at.isoformat(),
-    }
-    path = _backup_dir(server_id) / f"{backup_id}.json"
-    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    base = _backup_dir(server_id)
+    dump = base / f"{backup_id}.dump"
+    manifest = base / f"{backup_id}.json"
+    dsn, env = _pg_dsn()
+
+    await _run_pg_tool("pg_dump", [f"--file={dump}", "--format=custom", dsn], env)
+    manifest.write_text(
+        json.dumps(
+            {
+                "backup_id": backup_id,
+                "server_id": str(server.id),
+                "slug": server.slug,
+                "name": server.name,
+                "status": server.status.value,
+                "created_at": created_at.isoformat(),
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    _prune_old_backups(base, get_settings().backup_retention_days)
+
     return BackupRead(
         backup_id=backup_id,
-        path=str(path),
-        size=path.stat().st_size,
+        path=str(dump),
+        size=dump.stat().st_size,
         created_at=created_at,
     )
 
@@ -320,7 +379,7 @@ async def create_backup(session: AsyncSession, server_id: RecordId) -> BackupRea
 def _resolve_backup_path(server_id: RecordId, payload: RestoreRequest) -> Path:
     base = _backup_dir(server_id)
     if payload.backup_id:
-        path = (base / f"{payload.backup_id}.json").resolve()
+        path = (base / f"{payload.backup_id}.dump").resolve()
     elif payload.path:
         path = Path(payload.path).resolve()
     else:
@@ -347,8 +406,9 @@ async def restore_backup(
 ) -> Server:
     server = await servers_repository.get_server(session, server_id)
     path = _resolve_backup_path(server_id, payload)
+    manifest = path.with_suffix(".json")
     try:
-        data = json.loads(path.read_text(encoding="utf-8"))
+        data = json.loads(manifest.read_text(encoding="utf-8"))
     except Exception as exc:
         raise DomainError(
             "Invalid backup file.",
@@ -361,10 +421,8 @@ async def restore_backup(
             code="backup_server_mismatch",
             extra={"server_id": str(server_id)},
         )
-    # Minimal restore: refresh known mutable fields if present
-    if isinstance(data.get("name"), str):
-        server.name = data["name"]
-    if "description" in data:
-        server.description = data.get("description")
-    await session.flush()
+
+    dsn, env = _pg_dsn()
+    await _run_pg_tool("pg_restore", [f"--dbname={dsn}", "--clean", "--if-exists", str(path)], env)
+    await session.refresh(server)
     return server

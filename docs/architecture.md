@@ -106,9 +106,10 @@ PostgreSQL, and the node is not expected to work without it.
 
 This removes the mode switch: the installer and the compose stack bring Kafka
 up with everything else, so the owner never has to configure it by hand. A node
-whose Kafka is down reports the failure like any other dependency failure. The
-chat bus can therefore assume Kafka exists when cross-process fan-out is
-implemented.
+whose Kafka is down reports `kafka: error` in `/health/ready` and degrades to
+local in-process delivery rather than losing chat entirely; this is a
+degradation, not a second supported mode. `HAZEL_KAFKA_FANOUT_ENABLED=false`
+exists only to run the test suite and local development without a broker.
 
 ---
 
@@ -228,15 +229,19 @@ instead of letting their queue grow without limit.
 **Why events wait for commit.** Views call `events.outbox.queue_event()` and the
 database dependency dispatches after `COMMIT`. This prevents the classic race
 where a client receives `message.created` and immediately fetches history
-before the message is visible. The outbox is also the seam for a future Kafka or
-PostgreSQL transport.
+before the message is visible. The outbox is also the seam used by the Kafka
+transport.
 
-**Known limitation.** The bus is process-local. The node and each group run in
-separate processes, so a socket connected to one process does not see events
-published by another process. The Kafka decision makes a broker available on
-every node, so cross-process fan-out will move onto Kafka when implemented.
-Until then, clients that use a single process for both HTTP and WebSocket are
-fully covered.
+**Cross-process fan-out.** `events/kafka_bus.py` mirrors every committed event
+onto the `hazel.events` topic and consumes it in every Hazel process with a
+unique consumer group (fan-out, not competing consumers). The producer's own
+instance id is carried in the payload so a process skips its own messages and
+doesn't echo them back. Each process still uses the in-process bus for local
+sockets; Kafka only connects the processes. Delivery stays at-least-once with no
+replay for a socket that was offline, matching the v1 contract. If the broker
+can't be reached at startup, the process logs the error and keeps local delivery
+only; `/health/ready` reports `kafka: error`. The transport can be disabled with
+`HAZEL_KAFKA_FANOUT_ENABLED=false` for local development.
 
 ## 9. Backups
 
@@ -245,17 +250,22 @@ last 3 days of changes, so a restore can recover any recent state inside that
 window. Backups stay with the node; off-site replication is not part of this
 decision yet.
 
-The mechanism (WAL archiving with point-in-time recovery, or scheduled dumps)
-is an implementation detail still to be built. The fixed part is the 3-day
-window.
+**Decision:** scheduled logical dumps, not WAL/PITR. `POST /backup` runs
+`pg_dump --format=custom`, writes a `.dump` file plus a JSON manifest under
+`HAZEL_STORAGE_ROOT/backups/{server_id}/`, and prunes files older than
+`HAZEL_BACKUP_RETENTION_DAYS` (default 3). `POST /restore` checks the manifest's
+`server_id` and runs `pg_restore --clean --if-exists`. WAL archiving would give
+point-in-time recovery but needs continuous archiving and a much heavier setup
+on an owner's PC; a nightly-style dump on demand covers the 3-day recovery
+window with tools shipped in the runtime image (`postgresql-client`).
 
 ## Pending decisions
 
-These questions stay open on purpose, until you resolve them:
+Resolved earlier in this document: server discovery (invite codes), backup
+mechanism (logical dumps with a 3-day window), where files live (node disk) and
+custom roles (not in v1).
 
-1. **Server discovery** — if a node listens on `192.168.1.50:7272`, how does a
-   guest find it? Today the idea is sharing `host:port` by hand.
-2. **Backup mechanism** — WAL archiving with point-in-time recovery, or
-   scheduled dumps, to cover the 3-day window from section 9.
-3. **Mobile** — native, Flutter, React Native? The API doesn't constrain it,
+Still open:
+
+1. **Mobile** — native, Flutter, React Native? The API doesn't constrain it,
    but the client does.
