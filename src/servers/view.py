@@ -322,14 +322,14 @@ async def create_invite(
     return InviteRead.model_validate(invite)
 
 
-@router.get("/invites/{code}", response_model=InviteRead, summary="See an invite")
+@invites_router.get("/{code}", response_model=InviteRead, summary="See an invite")
 async def get_invite(code: InviteCode, session: SessionDep) -> InviteRead:
     invite = await service.get_invite(session, code)
     return InviteRead.model_validate(invite)
 
 
-@router.delete(
-    "/invites/{code}",
+@invites_router.delete(
+    "/{code}",
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Revoke an invite",
 )

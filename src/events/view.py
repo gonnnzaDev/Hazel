@@ -11,14 +11,16 @@ from collections.abc import Mapping
 from typing import Any
 
 from fastapi import APIRouter, WebSocket
+from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.websockets import WebSocketDisconnect
 
 from channels.model import Channel
-from common.types import utcnow
+from common.types import RecordId, utcnow
 from config.bdd_config.bdd_config import get_session_maker
-from config.conf import get_settings
+from config.conf import Settings, get_settings
 from core.api.errors import AuthenticationError
 from events.bus import Subscription, TypingWindow, bus, enqueue_direct, envelope
+from identity.model import Member
 from identity.service import authenticate
 from servers.model import Server
 
@@ -54,12 +56,14 @@ def _channel_id_of(payload: dict[str, Any]) -> uuid.UUID | None:
     except ValueError:
         return None
 
-#Web sockets events
+
+# Web socket events
+
 
 async def authenticate_connection(
     websocket: WebSocket,
     session: AsyncSession,
-):
+) -> tuple[Member, Server] | None:
     try:
         member = await authenticate(
             session,
@@ -80,7 +84,7 @@ async def authenticate_connection(
     return member, server
 
 
-def create_subscription(member):
+def create_subscription(member: Member) -> tuple[Subscription, bool]:
     return bus.subscribe(
         server_id=member.server_id,
         member_id=member.id,
@@ -89,7 +93,7 @@ def create_subscription(member):
     )
 
 
-def publish_presence(member, is_online: bool) -> None:
+def publish_presence(member: Member, is_online: bool) -> None:
     bus.publish(
         server_id=member.server_id,
         event=envelope(
@@ -104,7 +108,7 @@ def publish_presence(member, is_online: bool) -> None:
     )
 
 
-def publish_connection_ready(member, server) -> None:
+def publish_connection_ready(member: Member, server: Server) -> None:
     bus.publish(
         server_id=member.server_id,
         event=envelope(
@@ -124,8 +128,8 @@ def publish_connection_ready(member, server) -> None:
 
 async def register_connection(
     session: AsyncSession,
-    member,
-    server,
+    member: Member,
+    server: Server,
     first_socket: bool,
 ) -> None:
     member.is_online = True
@@ -141,8 +145,8 @@ async def register_connection(
 
 async def unregister_connection(
     session: AsyncSession,
-    member,
-    sub,
+    member: Member,
+    sub: Subscription,
 ) -> None:
     try:
         was_last = bus.unsubscribe(sub)
@@ -163,7 +167,7 @@ async def unregister_connection(
 
 
 def publish_error(
-    server_id,
+    server_id: RecordId,
     code: str,
     detail: str,
 ) -> None:
@@ -181,10 +185,10 @@ def publish_error(
 
 
 async def handle_channel_subscribe(
-    payload,
+    payload: dict[str, Any],
     session: AsyncSession,
-    member,
-    sub,
+    member: Member,
+    sub: Subscription,
 ) -> None:
     channel_id = _channel_id_of(payload)
 
@@ -216,9 +220,9 @@ async def handle_channel_subscribe(
 
 
 def handle_channel_unsubscribe(
-    payload,
-    member,
-    sub,
+    payload: dict[str, Any],
+    member: Member,
+    sub: Subscription,
 ) -> None:
     channel_id = _channel_id_of(payload)
 
@@ -248,10 +252,10 @@ def handle_channel_unsubscribe(
 
 
 def handle_typing(
-    payload,
-    member,
-    sub,
-    typing,
+    payload: dict[str, Any],
+    member: Member,
+    sub: Subscription,
+    typing: TypingWindow,
     typing_limit: int,
 ) -> None:
     channel_id = _channel_id_of(payload)
@@ -277,12 +281,12 @@ def handle_typing(
 
 
 async def handle_event(
-    payload,
+    payload: dict[str, Any],
     session: AsyncSession,
-    member,
-    sub,
-    typing,
-    settings,
+    member: Member,
+    sub: Subscription,
+    typing: TypingWindow,
+    settings: Settings,
 ) -> None:
     kind = payload.get("type")
 
@@ -291,15 +295,11 @@ async def handle_event(
         return
 
     if kind == "channel.subscribe":
-        await handle_channel_subscribe(
-            payload, session, member, sub
-        )
+        await handle_channel_subscribe(payload, session, member, sub)
         return
 
     if kind == "channel.unsubscribe":
-        handle_channel_unsubscribe(
-            payload, member, sub
-        )
+        handle_channel_unsubscribe(payload, member, sub)
         return
 
     if kind == "typing.start":
@@ -322,14 +322,12 @@ async def handle_event(
 async def receive_events(
     websocket: WebSocket,
     session: AsyncSession,
-    member,
-    sub,
-    typing,
-    settings,
+    member: Member,
+    sub: Subscription,
+    typing: TypingWindow,
+    settings: Settings,
 ) -> None:
-    idle_timeout = float(
-        settings.websocket_idle_timeout_seconds
-    )
+    idle_timeout = float(settings.websocket_idle_timeout_seconds)
 
     while True:
         try:
@@ -370,10 +368,10 @@ async def receive_events(
 
 
 async def cleanup_connection(
-    sender: asyncio.Task | None,
+    sender: asyncio.Task[None] | None,
     session: AsyncSession,
-    member,
-    sub,
+    member: Member,
+    sub: Subscription,
 ) -> None:
     if sender is not None:
         sender.cancel()
@@ -438,6 +436,3 @@ async def ws_events(websocket: WebSocket) -> None:
                 member=member,
                 sub=sub,
             )
-
-
-# websocket events 

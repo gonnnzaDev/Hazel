@@ -243,21 +243,34 @@ which is why rate limits and member caps exist.
 
 | Method | Route | What it does |
 |---|---|---|
+| `[x]` | `PUT /api/v1/servers/{server_id}/members/{nickname}/role?role=admin` | Change a member's role. No body. Returns the updated member. |
 
-
-
-The three base roles already apply: a member stops being `member` and becomes
-`admin` with `PUT .../role?role=admin`.
+A member stops being `member` and becomes `admin` with
+`PUT .../role?role=admin`. The only accepted query values are `member` and
+`admin`; anything else returns 422 `invalid_role` with
+`{"allowed": ["member", "admin"]}`.
 
 ### Base roles
 
+Roles are stored as numbers (`member=10`, `admin=50`, `owner=100`) because
+permissions compare rank; the API speaks words (`"role": "admin"` in member
+responses), so a client doesn't need to know that admin is 50.
+
 | Role | Can |
 |---|---|
-| `owner` | Everything, including deleting server and node. Can't be removed or handed off. |
-| `admin` | Manage channels, members and roles. Can't delete server. |
+| `owner` | Everything, including deleting the server. Assigned to the first member; can't be removed or handed off via API (`owner_role_immutable`). |
+| `admin` | Manage channels, members and roles. Can't delete the server. |
 | `member` | Chat. Default role for anyone joining. |
 
-Custom roles come later. The permission model stays open for you to define.
+Rules enforced by the service layer:
+
+- only an admin or owner can change roles or kick (`not_admin`);
+- nobody can kick someone with an equal or higher role (`role_hierarchy`), nor
+  themselves (`cannot_kick_self`);
+- the owner can leave on their own, but no one can kick them;
+- changing to or from `owner` is rejected (`owner_role_immutable`).
+
+Custom roles are not implemented. The permission model stays open for you to define.
 
 ---
 
@@ -454,6 +467,73 @@ a new event doesn't crash.
 
 ---
 
+## 7.1. Calls (voice)
+
+Voice uses its own WebRTC signaling sockets. There is no media server: peers
+connect to each other (full mesh), so upload bandwidth grows with the square
+of the headcount.
+
+| Method | Route | What it does |
+|---|---|---|
+| `[x]` | `WS /api/v1/servers/{server_id}/channels/{channel_id}/call?token=<token>` | Join the call's signaling room. |
+| `[x]` | `GET /api/v1/servers/{server_id}/channels/{channel_id}/call/participants` | Who is in the room. Requires `Bearer <token>`. |
+
+### Signalling socket
+
+The token goes in the query string, as in `/ws`, and is authenticated once at
+connect time. Invalid, expired, foreign-server, unknown-channel or malformed
+targets close with code `1008` (reason is the error code, e.g.
+`missing_token`, `wrong_server`, `channel_not_found`). The channel must belong
+to the server in the path.
+
+On join the server sends:
+
+```json
+{
+  "type": "welcome",
+  "you": "01a1...",
+  "peers": [
+    { "member_id": "01a1...", "nickname": "ana", "display_name": "Ana", "mic": true, "cam": false }
+  ],
+  "ice_servers": []
+}
+```
+
+`ice_servers` comes from `HAZEL_CALL_ICE_SERVERS` (STUN/TURN list, empty by
+default); Hazel doesn't depend on any external service for a LAN call. Other
+peers receive `peer-joined` with the same peer shape; on disconnect they get
+`{"type": "peer-left", "member_id": "..."}`.
+
+Client frames are JSON. Unknown types and malformed JSON are ignored — they
+never drop the socket.
+
+| Frame | Effect |
+|---|---|
+| `{"type":"offer","to":"<member_id>","sdp":{...}}` | Forwarded to that peer as `{"type":"offer","from":"<member_id>","payload":{...}}`. |
+| `{"type":"answer","to":"<member_id>","sdp":{...}}` | Same, with type `answer`. |
+| `{"type":"ice","to":"<member_id>","candidate":{...}}` | Same, with type `ice` and the candidate as payload. |
+| `{"type":"state","mic":true,"cam":false}` | Updates your peer state and broadcasts `peer-state` to the other peers. |
+
+### Participants
+
+```json
+{
+  "channel_id": "01a1...",
+  "participants": [
+    { "member_id": "01a1...", "nickname": "ana", "display_name": "Ana", "mic": true, "cam": false }
+  ],
+  "count": 1,
+  "max": 16
+}
+```
+
+`max` is `HAZEL_CALL_MAX_PARTICIPANTS` (default 16). **The cap is reported but
+not enforced yet**: a room accepts every peer that connects. Rooms and peer
+state live in process memory only (`src/calls/repository.py`), so they are lost
+on restart and are not shared between the node and group processes.
+
+---
+
 ## 8. Invites and discovery
 
 | Method | Route | What it does |
@@ -513,32 +593,72 @@ All errors use `application/problem+json`:
   "code": "server_inactive",
   "detail": "Server is inactive. It accepts no connections until its owner activates it again.",
   "server_id": "01a1...",
-  "status": "inactive"
+  "state": "inactive"
 }
 ```
 
+`status` is always the HTTP status number. Domain errors add context fields
+(`server_id`, `state`, `channel_id`, `errors`, etc.) at the top level.
+
 ### Catalog
+
+Codes actually emitted by the API, grouped by HTTP status.
 
 | `code` | HTTP | When |
 |---|---|---|
+| `unauthenticated` | 401 | Default for a missing/invalid token. |
+| `missing_token` | 401 | No token on a protected socket (`/ws`, calls) or service call. |
+| `invalid_token` | 401 | Token is malformed, revoked or expired. |
+| `invalid_admin_token` | 401 | Wrong/missing node administration token. |
+| `forbidden` | 403 | Default permission error. |
+| `wrong_server` | 403 | Token belongs to a different server than the path. |
+| `not_admin` | 403 | Action requires admin or owner. |
+| `owner_required` | 403 | Only the node owner can do this (e.g. delete group). |
+| `role_hierarchy` | 403 | Kicking someone with an equal or higher role. |
+| `owner_role_immutable` | 403 | Trying to assign or remove the owner role. |
+| `not_message_author` | 403 | Editing someone else's message. |
+| `not_found` | 404 | Default for a missing resource. |
 | `server_not_found` | 404 | Server doesn't exist. |
 | `server_not_found_by_slug` | 404 | No server with that identifier. |
+| `member_not_found` / `member_not_found_by_nickname` | 404 | Member missing. |
+| `channel_not_found` | 404 | Channel missing or belongs to another server. |
+| `message_not_found` | 404 | Message missing. |
+| `attachment_not_found` | 404 | Attachment missing. |
+| `invite_not_found` | 404 | Invite code doesn't exist. |
+| `backup_not_found` | 404 | `backup_id` or path doesn't exist. |
+| `call_target_not_found` | 404 | Malformed server/channel id on the call socket. |
 | `server_inactive` | 409 | Tried to use a turned-off server. |
 | `server_deleted` | 409 | Tried to use a deleted server. |
 | `invalid_state_transition` | 409 | Impossible lifecycle transition. |
+| `conflict` | 409 | Default conflict. |
 | `slug_taken` | 409 | Identifier already exists. |
-| `port_taken` | 409 | Port taken by another active server. |
 | `nickname_taken` | 409 | Nickname already exists on that server. |
+| `channel_name_taken` | 409 | Channel name already exists on that server. |
+| `default_channel` | 409 | The default channel can't be deleted. |
+| `message_deleted` | 409 | Replying to or reacting on a deleted message. |
+| `invite_invalid` | 409 | Single-use invite already consumed. |
+| `no_free_port` | 409 | No port left in the node's group port range. |
+| `not_the_node` | 409 | Group management called on a non-node process. |
+| `invite_expired` | 410 | Invite TTL passed. |
+| `message_too_large` | 413 | Message over 4000 bytes. |
+| `attachment_too_large` | 413 | Upload over the configured limit. |
+| `rate_limited` | 429 | Over the per-nickname message limit. |
 | `nickname_reserved` | 422 | Nickname is on the reserved list. |
 | `nickname_invalid_charset` | 422 | Disallowed characters. |
-| `nickname_too_short` / `_too_long` | 422 | Length out of range. |
-| `unauthenticated` | 401 | Missing or expired token. |
-| `forbidden` / `not_owner` | 403 | No permission. |
-| `rate_limited` | 429 | Over message limit. |
-| `message_too_large` | 413 | Message over 4000 bytes. |
-| `validation_error` | 422 | Body doesn't meet contract. |
-| `invite_not_found` | 404 | Invite code doesn't exist. |
-| `invite_expired` | 410 | Invite TTL passed or single-use consumed. |
+| `nickname_too_short` / `nickname_too_long` | 422 | Length out of range. |
+| `request_validation_error` | 422 | FastAPI request validation; includes `errors`. |
+| `validation_error` / `domain_validation_error` | 422 | Body or domain rule doesn't meet the contract. |
+| `cannot_kick_self` | 422 | Use "leave the server" instead. |
+| `invalid_role` | 422 | Unknown `?role=`; includes `allowed`. |
+| `invalid_slug` | 422 | Slug normalizes to empty. |
+| `reply_target_invalid` / `reply_target_deleted` | 422 | Bad `reply_to`. |
+| `invalid_restore_request` / `invalid_backup_path` / `invalid_backup_file` / `backup_server_mismatch` | 422 | Backup validation failed. |
+| `internal_error` | 500 | Unhandled error. |
+
+`port_taken` and `not_owner` were in an earlier version of this catalog but
+are never emitted: the node allocates ports itself (`no_free_port` when the
+range is exhausted) and owner checks report `owner_required` or
+`role_hierarchy`. Starlette HTTP exceptions use `http_<status>` instead.
 
 ---
 

@@ -188,7 +188,7 @@ def ensure_active(server: Server) -> None:
         raise ServerInactiveError(
             f"Server is {server.status.value}. It accepts no connections until "
             f"its owner reactivates it.",
-            extra={"server_id": str(server.id), "status": server.status.value},
+            extra={"server_id": str(server.id), "state": server.status.value},
         )
 
 
