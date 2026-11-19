@@ -88,6 +88,59 @@ class ServerAddress(BaseModel):
         )
 
 
+class InviteCreate(BaseModel):
+    ttl_seconds: Annotated[int, Field(default=300, ge=60, le=60 * 60 * 24 * 30)]
+    single_use: bool = False
+    password: Annotated[str | None, Field(default=None, max_length=255)] = None
+
+
+class InviteRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    code: str
+    server_id: RecordId
+    created_by: str
+    created_at: datetime
+    expires_at: datetime
+    single_use: bool
+    consumed: bool
+    has_password: bool = False
+
+
+class ServerStats(BaseModel):
+    server_id: RecordId
+    members: int
+    messages: int
+    attachment_bytes: int
+    db_bytes: int
+    total_bytes: int
+
+
+class BackupRead(BaseModel):
+    backup_id: str
+    path: str
+    size: int
+    created_at: datetime
+
+
+class RestoreRequest(BaseModel):
+    backup_id: str | None = None
+    path: str | None = None
+
+
+class AuditEventRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: RecordId
+    server_id: RecordId
+    actor_nickname: str | None
+    action: str
+    target_type: str | None
+    target_id: str | None
+    data: dict[str, object]
+    created_at: datetime
+
+
 class ServerListResponse(BaseModel):
     items: list[ServerRead]
     total: int

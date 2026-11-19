@@ -46,7 +46,7 @@ COPY migrations/ ./migrations/
 COPY alembic.ini ./
 
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --locked --no-dev
+    uv sync --locked --no-dev --no-editable
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -113,5 +113,8 @@ EXPOSE 7272
 # Shell form (not exec) on purpose: the only one expanding ${HAZEL_PORT}.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
     CMD python -c "import os,sys,urllib.request; url=f\"http://127.0.0.1:{os.environ.get('HAZEL_PORT','7272')}/health\"; sys.exit(0 if urllib.request.urlopen(url, timeout=4).status == 200 else 1)"
+
+# Default role: the node. The entrypoint forwards this to `python -m core`.
+CMD ["node"]
 
 ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/hazel-entrypoint"]

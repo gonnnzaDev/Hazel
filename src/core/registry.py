@@ -11,6 +11,7 @@ from events.view import router as events_router
 from identity.view import router as identity_router
 from messages.view import router as messages_router
 from node.view import router as node_router
+from servers.view import invites_router as invites_router
 from servers.view import router as servers_router
 
 
@@ -27,6 +28,7 @@ INSTALLED_APPS: tuple[AppConfig, ...] = (
     AppConfig(name="node", router=node_router, prefix="/node", tags=("node",)),
     AppConfig(name="identity", router=identity_router, tags=("identity",)),
     AppConfig(name="servers", router=servers_router, prefix="/servers", tags=("servers",)),
+    AppConfig(name="invites", router=invites_router, prefix="/invites", tags=("invites",)),
     AppConfig(name="calls", router=calls_router, prefix="/servers", tags=("calls",)),
     AppConfig(name="channels", router=channels_router, prefix="/servers", tags=("channels",)),
     AppConfig(name="messages", router=messages_router, tags=("messages",)),
