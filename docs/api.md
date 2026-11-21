@@ -88,7 +88,7 @@ A room inside a server. There are text and voice channels.
 > **There is no `POST /node/start` nor `POST /node/stop`.** The node port is the
 > process port: if the node is running, the port is open. An HTTP endpoint that
 > shuts down its own HTTP process is hard to reason about and test, and adds
-> nothing `Ctrl+C` or `docker compose stop` don't do better. The owner stops
+> nothing `Ctrl+C` or `python -m composer down` don't do better. The owner stops
 > their node from outside and data stays intact.
 
 ### `GET /api/v1/node/address` — the critical point

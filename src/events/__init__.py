@@ -1,1 +1,0 @@
-"""General WebSocket event stream."""

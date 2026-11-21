@@ -113,29 +113,37 @@ exists only to run the test suite and local development without a broker.
 
 ---
 
-## 5. Structure: feature modules under `src/`
+## 5. Structure: the Rust crate under `rust/`
 
-Each feature lives in `src/<name>/` with the same layout always:
+The application is Rust. `cargo build --release` produces one binary with two
+roles (`node` and `group`, chosen by CLI argument).
 
-| Layer | File | Responsibility | Knows HTTP? |
-|---|---|---|---|
-| **Model** | `model.py` | Persistence (async SQLAlchemy) | No |
-| **Repository** | `repository.py` | Queries and writes, no policy decisions | No |
-| **Schema** | `schemas.py` | Pydantic contracts | No |
-| **Service** | `service.py` | Business logic and orchestration | **No** |
-| **View** | `view.py` | HTTP bindings | Yes |
+**One struct, one file.** Every file defines at most one struct (or enum) and
+its implementation. When a module needs another type it imports it instead of
+declaring it locally. No source file is longer than ~220 lines.
 
-**Why this separation:**
+| Directory | Responsibility | Knows HTTP? |
+|---|---|---|
+| `src/main.rs` | Entry point, role selection, setup, graceful shutdown | No |
+| `src/config/` | `HAZEL_*` settings and simple `.env` parser | No |
+| `src/models/` | One file per DTO / DB row, with its `FromRow`/`From` impl | No |
+| `src/routes/<feature>/` | HTTP/WS bindings, grouped by responsibility | Yes |
+| `src/events/` | In-process bus, subscriptions, Kafka fan-out, outbox | No |
+| `src/calls/` | WebRTC rooms (`Peer`, `CallManager`) and signaling helpers | No |
+| `src/supervisor/` | One child process per active group | No |
+| `src/auth/`, `src/error/`, `src/utils/` | Extractors, problem+json, shared helpers | Partly |
 
-- The hard rule is that `service.py` (and `repository.py`) import nothing from FastAPI. Business
-  logic can be tested without bringing the API up and will serve a future
-  mobile client the same as a PC.
-- Domain errors (`src/core/api/errors.py`) are raised from the service and
-  translated to `application/problem+json` in a global handler. The service
-  doesn't pick HTTP codes.
+**Why this separation:** business logic lives outside the route handlers so it
+doesn't depend on axum. Domain errors are returned as `ApiError` and turned into
+`problem+json` at the boundary, so handlers don't pick status codes ad hoc.
 
-`src/core/registry.py` declares `INSTALLED_APPS`. It's the only place where a module
-is added or removed, and defines the order in which Alembic sees models.
+Each directory has a `mod.rs` that declares its children and re-exports them, so
+external imports (`crate::models::*`, `crate::events::*`, …) did not change.
+`src/routes/mod.rs` is the only place where a route group is added or removed.
+`rust/Cargo.lock` pins every dependency.
+
+Python survives only as `composer/`: environment generation, build, containers,
+migrations and health checks. It is not part of the running application.
 
 ---
 
