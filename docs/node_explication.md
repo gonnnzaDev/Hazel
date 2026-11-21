@@ -9,14 +9,14 @@ when it stops, nobody can reach any of its groups. Stopping never deletes
 data.
 
 2. TWO PROCESSES, TWO ROLES
-- Node process (`python -m core` / `node`): the owner's control panel. It
+- Node process (`hazel` / `python -m composer api`): the owner's control panel. It
   creates groups, assigns ports, and supervises group processes.
-- Group process (`python -m core group --server-id=... --port=...`): serves
+- Group process (`hazel group --server-id=... --port=...`): serves
   exactly ONE group (its chat, members and calls) on its own port.
 A group never manages other groups: group routes fail with `not_the_node`
 outside the node process.
 
-3. SUPERVISOR (`supervisor.py`)
+3. SUPERVISOR (`supervisor/group_supervisor.rs`)
 Keeps one live child process per active group:
 - `spawn()`: launches `sys.executable -m core group ...` with a guard pipe
   as stdin. If the node dies, the pipe closes, the child reads EOF and
@@ -83,16 +83,16 @@ N servidores ("grupos") adentro. Mientras corre, el puerto está abierto;
 cuando se apaga, nadie entra a ningún grupo. Apagar nunca borra datos.
 
 2. DOS PROCESOS, DOS ROLES
-- Proceso nodo (`python -m core` / `node`): el panel del dueño. Crea grupos,
+- Proceso nodo (`hazel` / `python -m composer api`): el panel del dueño. Crea grupos,
   reparte puertos y supervisa los procesos de grupo.
-- Proceso de grupo (`python -m core group --server-id=... --port=...`):
+- Proceso de grupo (`hazel group --server-id=... --port=...`):
   sirve UN solo grupo (su chat, miembros y llamadas) en su propio puerto.
 Un grupo nunca maneja otros grupos: sus rutas fallan con `not_the_node`
 fuera del proceso nodo.
 
-3. SUPERVISOR (`supervisor.py`)
+3. SUPERVISOR (`supervisor/group_supervisor.rs`)
 Mantiene un proceso hijo vivo por grupo activo:
-- `spawn()`: lanza `sys.executable -m core group ...` con un pipe de guarda
+- `spawn()`: lanza `current_exe() group ...` con un pipe de guarda
   como stdin. Si el nodo muere, el pipe se cierra, el hijo lee EOF y sale
   solo — sin procesos zombies ocupando puertos.
 - `wait_ready()`: espera hasta 20s a que el hijo responda su latido.

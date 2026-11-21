@@ -1,130 +1,20 @@
 [project]
-name = "hazel"
+name = "hazel-composer"
 version = "0.1.0"
-description = "Chat autoservido. Tu servidor, tu máquina, tu puerto."
+description = "Hazel: orquestación en Python puro. El servidor está en Rust."
 readme = "README.md"
-requires-python = ">=3.14"
+requires-python = ">=3.12"
 license = { text = "UNLICENSED" }
-
-dependencies = [
-    "fastapi>=0.115",
-    "uvicorn[standard]>=0.32",
-    "sqlalchemy[asyncio]>=2.0.36",
-    "asyncpg>=0.30",
-    "alembic>=1.14",
-    "psycopg[binary]>=3.2",  # driver síncrono, solo para las migraciones
-    "pydantic>=2.9",
-    "pydantic-settings>=2.6",
-    "aiokafka>=0.12",
-    "python-multipart>=0.0.32",
-]
-
-[dependency-groups]
-dev = [
-    "pytest>=8.3",
-    "pytest-asyncio>=0.24",
-    "httpx>=0.28",
-    "aiosqlite>=0.20",
-    "ruff>=0.8",
-    "mypy>=1.13",
-]
+# El composer usa únicamente la biblioteca estándar: sin dependencias.
+dependencies = []
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = [
-    "src/calls",
-    "src/channels",
-    "src/common",
-    "src/config",
-    "src/core",
-    "src/events",
-    "src/identity",
-    "src/messages",
-    "src/node",
-    "src/servers",
-]
+packages = ["composer"]
 
-# ──────────────────────────────────────────────────────────────────────────────
-# entrypoints
-# ──────────────────────────────────────────────────────────────────────────────
+# Opcional: `hazel-composer ...` en vez de `python -m composer ...`.
 [project.scripts]
-hazel-api = "core.run:main"
-
-# ──────────────────────────────────────────────────────────────────────────────
-# pytest
-# ──────────────────────────────────────────────────────────────────────────────
-[tool.pytest.ini_options]
-testpaths = ["tests"]
-asyncio_mode = "auto"
-asyncio_default_fixture_loop_scope = "function"
-filterwarnings = ["error", "ignore::DeprecationWarning"]
-
-# ──────────────────────────────────────────────────────────────────────────────
-# ruff
-# ──────────────────────────────────────────────────────────────────────────────
-[tool.ruff]
-line-length = 100
-target-version = "py314"
-src = ["src"]
-
-[tool.ruff.lint]
-select = [
-    "E",    # pycodestyle
-    "W",    # warnings
-    "F",    # pyflakes
-    "I",    # isort
-    "N",    # pep8-naming
-    "UP",   # pyupgrade
-    "ASYNC",
-    "S",    # bandit
-    "B",    # bugbear
-    "C4",   # comprehensions
-    "DTZ",  # datetime tz
-    "T20",  # print
-    "SIM",  # simplify
-    "RUF",
-]
-ignore = [
-    "S101",  # assert: se usa en tests
-    "B008",  # Depends() en defaults es la convención de FastAPI
-]
-
-[tool.ruff.lint.per-file-ignores]
-"tests/**" = ["S", "T20"]
-"migrations/**" = ["E501"]
-# Son CLIs: escriben su progreso en stdout para que el operador lo vea.
-# `logging` acá sumaría configuración sin aportar nada.
-"src/core/wait_for_db.py" = ["T201"]
-
-[tool.ruff.lint.isort]
-known-first-party = [
-    "calls",
-    "channels",
-    "common",
-    "config",
-    "core",
-    "events",
-    "identity",
-    "messages",
-    "node",
-    "servers",
-]
-
-# ──────────────────────────────────────────────────────────────────────────────
-# mypy
-# ──────────────────────────────────────────────────────────────────────────────
-[tool.mypy]
-python_version = "3.14"
-strict = true
-plugins = ["pydantic.mypy"]
-mypy_path = "."
-warn_unreachable = true
-show_error_codes = true
-disallow_untyped_decorators = false
-
-[[tool.mypy.overrides]]
-module = ["aiokafka.*", "asyncpg.*"]
-ignore_missing_imports = true
+hazel-composer = "composer.__main__:main"

@@ -1,161 +1,58 @@
 # Docker
 
-The idea is that anyone cloning the repo gets **exactly the same environment**,
-without installing Python, PostgreSQL or Kafka by hand.
+Python es el **único composer**: no hay `docker compose`, ni `Makefile`, ni
+scripts. Todo se hace con `python -m composer`, que usa el CLI de Docker.
 
 ```bash
 git clone https://github.com/gonnnzaDev/hazel
 cd hazel
-./scripts/setup.sh
-# setup.sh creates .env with a generated HAZEL_SECRET_KEY
-
-docker compose up
+python -m composer setup
 ```
 
-That brings up the node, PostgreSQL and Kafka. The API lands at
-<http://localhost:7272/docs>.
+`setup` genera `.env`, compila el nodo Rust, crea la red `hazel`, arranca
+PostgreSQL y Kafka y aplica las migraciones SQL.
 
----
+## Perfiles
 
-## The two composes
-
-| File | What it brings up | When |
-|---|---|---|
-| `docker-compose.yml` | Node + PostgreSQL + Kafka | To run everything containerized, same as production |
-| `docker-compose.dev.yml` | Only PostgreSQL + Kafka | For development: the API runs on your machine and reloads on save |
-
-For development:
-
-```bash
-docker compose -f docker-compose.dev.yml up -d
-make migrate
-make api          # runs on your machine, with reload
-```
-
----
-
-## Multi-architecture image
-
-The base image is pinned **by digest**, and it's the multi-architecture index
-digest, not a single platform's. That's why the same build produces the right
-image on each machine:
-
-| Platform | Used by |
+| Comando | Qué arranca |
 |---|---|
-| `linux/amd64` | Intel/AMD PC, Windows with Docker Desktop, Intel Mac |
-| `linux/arm64/v8` | Apple Silicon, 64-bit Android (Termux) |
-| `linux/arm/v7` | 32-bit Android, Raspberry Pi |
-| `linux/386` | 32-bit x86 |
-| `linux/ppc64le` | Old Raspberry Pi, some SBCs |
+| `python -m composer up` | PostgreSQL + Kafka (para desarrollar el nodo en local) |
+| `python -m composer up full` | Nodo + PostgreSQL + Kafka, todo en contenedores |
+| `python -m composer api` | El binario Rust en esta máquina |
 
-To build them all at once:
+Los contenedores se llaman `hazel-postgres`, `hazel-kafka` y `hazel-api`
+(`-dev` si usas el perfil por defecto). Los volúmenes se conservan al hacer
+`down` y se borran con `reset`.
 
-```bash
-docker buildx create --use --name hazel   # only once
-docker buildx build \
-  --platform linux/amd64,linux/arm64,linux/arm/v7 \
-  -t gonnnzadev/hazel:0.1.0 \
-  --push .
-```
-
-> Android doesn't run native Docker. The way in is **Termux**, which does run
-> containers on Android 7 and up. Install scripts account for it.
-
----
-
-## What the image does
-
-**Multi-stage.** The first stage compiles dependencies with `uv`; the second
-copies only the result. The final image carries neither the compiler, nor `uv`,
-nor source code no longer used.
-
-**Unprivileged user.** Runs as `hazel` (uid 1001). A node is a process living
-on someone's PC; it shouldn't be able to write to `/usr` or create users.
-
-**`tini` as PID 1.** Without it, `SIGTERM` never reaches Uvicorn and every
-`docker compose restart` takes 10 seconds. With `tini`, the signal arrives,
-Uvicorn closes WebSocket connections and the container exits cleanly.
-
-**Migrations.** The entrypoint waits for PostgreSQL to answer and then runs
-`alembic upgrade head`. It's required: in Docker the API and DB start at the
-same time, and PostgreSQL takes a few seconds to accept connections.
-
-```
-==> waiting for the database (timeout: 60s)
-    database ready (postgres:5432/hazel)
-==> applying migrations
-==> starting the node
-```
-
-If you run several replicas of the same node, set `HAZEL_AUTO_MIGRATE=false` on
-all but one, or they'll step on each other.
-
----
-
-## Configuration
-
-Done via environment variables, not files. Compose reads `.env`.
-
-| Variable | What for | Default |
-|---|---|---|
-| `HAZEL_SECRET_KEY` | Signs tokens. **Required in production.** | — |
-| `HAZEL_PUBLISH_HOST` | Interface where the port is published | `0.0.0.0` |
-| `HAZEL_PUBLISH_PORT` | Published port on your machine | `7272` |
-| `HAZEL_AUTO_MIGRATE` | Apply migrations on start | `true` |
-| `HAZEL_ENV` | `local` \| `test` \| `prod` | `prod` in the image |
-| `HAZEL_DATABASE_URL` | PostgreSQL connection | points to `postgres:5432` |
-
-If `HAZEL_SECRET_KEY` is missing, compose fails with:
-
-```
-HAZEL_SECRET_KEY: set HAZEL_SECRET_KEY in your .env
-```
-
-It's intentional: better not to start than to start without your own secret.
-
----
-
-## Useful commands
+## Comandos útiles
 
 ```bash
-docker compose up -d              # bring up in background
-docker compose logs -f api        # follow node logs
-docker compose ps                 # status and health
-docker compose exec api python -m core.cli --help
-docker compose down               # stop, keep data
-docker compose down -v            # stop and DELETE volumes
-docker compose exec postgres psql -U hazel -d hazel   # enter the DB
+python -m composer ps                 # estado y health
+python -m composer logs kafka -f      # seguir logs
+python -m composer health             # /health y /health/ready
+python -m composer restart full
+python -m composer down               # parar, sin borrar datos
+python -m composer reset              # parar y BORRAR volúmenes
 ```
 
-Data lives in `postgres_data` and `kafka_data` volumes. `down` keeps them;
-`down -v` deletes them.
-
----
-
-## Frequent issues
-
-**Port already in use**
+Acceso directo a la base, si hace falta:
 
 ```bash
-HAZEL_PUBLISH_PORT=8080 docker compose up
+docker exec -it hazel-postgres-dev psql -U hazel -d hazel
 ```
 
-**`permission denied` mounting volumes**
+## Puertos
 
-Shouldn't happen on Linux; on Docker Desktop, check the project is on a path
-Docker can access.
+El nodo publica `7272` (HTTP/WS) y el rango `7273-7400` para los procesos
+grupo. Se pueden cambiar con `HAZEL_PUBLISH_PORT`, `HAZEL_PUBLISH_HOST` y
+`HAZEL_GROUP_PORT_END` en `.env`.
 
-**Node restarts in a loop**
+## La imagen
 
-Almost always it can't connect to the DB. Look at:
+`Dockerfile` es multi-etapa: compila con `rust:1.100-bookworm` y ejecuta sobre
+`debian:bookworm-slim`, sin toolchain ni Python. El binario es PID 1 y recibe
+SIGTERM directamente (no hay `tini` ni entrypoint). El healthcheck consulta
+`/health`.
 
-```bash
-docker compose logs api
-```
-
-If it says `database didn't respond`, the problem is in `postgres`, not Hazel.
-
-**Nobody can join me from the local network**
-
-`HAZEL_PUBLISH_HOST` must be `0.0.0.0`, not `127.0.0.1`. And the system firewall
-must let the port through.
+Las migraciones no las hace la imagen: las aplica el composer antes de
+arrancar el nodo, con `psql` dentro del contenedor de PostgreSQL.
