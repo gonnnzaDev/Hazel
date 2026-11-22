@@ -22,6 +22,17 @@ de inicial y la píldora de estado usa un punto de color. No se cargan fuentes
 externas: la app funciona sin conexión. La ventana de Tauri se declara
 `transparent: true` para que el WebView deje ver el fondo del sistema.
 
+### Arranque sin intervención
+
+Si falta alguna dependencia, el splash la instala automáticamente: `deps.rs`
+detecta qué falta y `install.rs` ejecuta el script del sistema
+(`scripts/install-deps-linux.sh`, `install-deps-macos.sh` o
+`install-deps-windows.ps1`), embebido en el binario y lanzado con elevación
+(`pkexec`/`sudo -n`, `osascript` o `Start-Process -Verb RunAs`). El progreso se
+muestra en el splash y, al terminar, se vuelve a comprobar todo. El usuario no
+ejecuta ni copia nada, aunque el sistema puede pedir aprobación del diálogo de
+permisos. Si la instalación falla, se muestran los comandos como respaldo.
+
 En Linux, el desenfoque del escritorio lo hace el compositor, no Tauri. En KDE
 Plasma hay que activar el efecto **Blur** de KWin (`blurEnabled=true` en
 `~/.config/kwinrc`, apartado `[Plugins]`) y ajustar `BlurStrength` en

@@ -4,11 +4,13 @@ import type { Dependency } from '../state/deps';
 type Props = {
   missing: Dependency[];
   checking: boolean;
+  installLog: string[];
+  installError: string | null;
   onContinue: () => void;
 };
 
-/** Pantalla de arranque: logo animado y, si falta algo, los comandos para instalarlo. */
-export function Splash({ missing, checking, onContinue }: Props) {
+/** Pantalla de arranque: logo animado e instalación automática de dependencias. */
+export function Splash({ missing, checking, installLog, installError, onContinue }: Props) {
   async function copyAll() {
     const text = missing.map((dep) => `# ${dep.name}\n${dep.install}`).join('\n\n');
     try {
@@ -17,6 +19,8 @@ export function Splash({ missing, checking, onContinue }: Props) {
       // El usuario puede seleccionar el texto manualmente.
     }
   }
+
+  const installing = installLog.length > 0 && !installError;
 
   return (
     <div className="splash" role="status" aria-label="Cargando Hazel">
@@ -30,9 +34,17 @@ export function Splash({ missing, checking, onContinue }: Props) {
 
         {checking && <p className="splash-checking">Comprobando dependencias…</p>}
 
-        {missing.length > 0 && (
+        {installing && (
           <div className="splash-deps">
-            <p className="splash-deps-title">Faltan dependencias para usar Hazel al 100%</p>
+            <p className="splash-deps-title">Instalando lo que falta…</p>
+            <pre className="splash-log">{installLog.slice(-12).join('\n')}</pre>
+          </div>
+        )}
+
+        {installError && (
+          <div className="splash-deps">
+            <p className="splash-deps-title">No se pudo instalar automáticamente</p>
+            <p className="muted">{installError}</p>
             <ul>
               {missing.map((dep) => (
                 <li key={dep.name}>
@@ -50,8 +62,23 @@ export function Splash({ missing, checking, onContinue }: Props) {
             </div>
           </div>
         )}
+
+        {missing.length > 0 && !installing && !installError && (
+          <div className="splash-deps">
+            <p className="splash-deps-title">Faltan dependencias para usar Hazel al 100%</p>
+            <ul>
+              {missing.map((dep) => (
+                <li key={dep.name}>
+                  <strong>{dep.name}</strong>
+                  <span className="muted">{dep.why}</span>
+                  <code>{dep.install}</code>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
       </div>
-      {missing.length === 0 && (
+      {missing.length === 0 && !installing && (
         <div className="splash-progress"><span /></div>
       )}
     </div>

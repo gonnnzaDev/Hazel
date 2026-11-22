@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ChatView } from './components/ChatView';
 import { ConnectPanel } from './components/ConnectPanel';
 import { ServerRail } from './components/ServerRail';
@@ -7,7 +7,12 @@ import { SessionBar } from './components/SessionBar';
 import { Splash } from './components/Splash';
 import { TitleBar } from './components/TitleBar';
 import { useAppStore } from './state/store';
-import { checkDependencies, type Dependency } from './state/deps';
+import {
+  checkDependencies,
+  installDependencies,
+  onInstallProgress,
+  type Dependency,
+} from './state/deps';
 
 const STATUS_LABEL: Record<string, string> = {
   idle: 'sin conexión',
@@ -63,6 +68,9 @@ export default function App() {
   const init = useAppStore((state) => state.init);
   const [booting, setBooting] = useState(true);
   const [missing, setMissing] = useState<Dependency[] | null>(null);
+  const [installLog, setInstallLog] = useState<string[]>([]);
+  const [installError, setInstallError] = useState<string | null>(null);
+  const installStarted = useRef(false);
 
   useEffect(() => {
     void init();
@@ -72,17 +80,49 @@ export default function App() {
     void checkDependencies().then(setMissing);
   }, []);
 
+  // Si falta algo, se instala automáticamente sin que el usuario haga nada.
   useEffect(() => {
-    if (missing === null || missing.length > 0) return;
+    if (missing === null || missing.length === 0 || installStarted.current) return;
+    installStarted.current = true;
+    let disposed = false;
+    let unlisten: (() => void) | undefined;
+
+    void (async () => {
+      unlisten = await onInstallProgress((line) => {
+        if (!disposed) setInstallLog((log) => [...log, line]);
+      });
+      try {
+        await installDependencies();
+        const remaining = await checkDependencies();
+        if (!disposed) setMissing(remaining);
+      } catch (error) {
+        if (!disposed) {
+          setInstallError(error instanceof Error ? error.message : String(error));
+        }
+      } finally {
+        unlisten?.();
+      }
+    })();
+
+    return () => {
+      disposed = true;
+      unlisten?.();
+    };
+  }, [missing]);
+
+  useEffect(() => {
+    if (missing === null || missing.length > 0 || installError) return;
     const timer = window.setTimeout(() => setBooting(false), SPLASH_MS);
     return () => window.clearTimeout(timer);
-  }, [missing]);
+  }, [missing, installError]);
 
   if (booting) {
     return (
       <Splash
         missing={missing ?? []}
         checking={missing === null}
+        installLog={installLog}
+        installError={installError}
         onContinue={() => setBooting(false)}
       />
     );

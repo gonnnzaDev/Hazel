@@ -565,6 +565,17 @@ code { background: var(--raised); border-radius: 5px; padding: 2px 7px; font-siz
   white-space: pre-wrap;
   background: var(--input);
 }
+.splash-log {
+  margin: 0;
+  max-height: 180px;
+  overflow-y: auto;
+  font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.72rem;
+  line-height: 1.5;
+  color: #b8bed0;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
 .splash-deps-actions { display: flex; gap: 10px; margin-top: 16px; flex-wrap: wrap; }
 .splash-continue { background: transparent; color: #a5b4fc; }
 .splash-continue:hover:not(:disabled) { background: transparent; filter: none; text-decoration: underline; }
