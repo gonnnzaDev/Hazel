@@ -4,7 +4,7 @@ use axum::extract::{Path, State};
 use axum::Json;
 use serde_json::json;
 
-use crate::auth::AdminAuth;
+use crate::auth::ServerAuth;
 use crate::error::{ApiError, ApiResult};
 use crate::events::{queue_event, record_audit};
 use crate::state::AppState;
@@ -13,11 +13,12 @@ use super::*;
 
 pub(crate) async fn update_server(
     State(state): State<Arc<AppState>>,
-    _admin: AdminAuth,
+    auth: ServerAuth,
     Path(raw_id): Path<String>,
     JsonBody(payload): JsonBody<ServerUpdate>,
 ) -> ApiResult<Json<ServerRead>> {
     let id = path_uuid(&raw_id)?;
+    auth.check(id)?;
     if let Some(name) = &payload.name {
         if name.len() < 2 || name.len() > 64 {
             return Err(ApiError::request_validation(

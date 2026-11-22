@@ -4,7 +4,7 @@ use std::sync::Arc;
 use axum::extract::{Path, Query, State};
 use axum::Json;
 
-use crate::auth::AdminAuth;
+use crate::auth::ServerAuth;
 use crate::error::ApiResult;
 use crate::state::AppState;
 
@@ -42,10 +42,11 @@ pub(crate) async fn get_address(
 
 pub(crate) async fn get_stats(
     State(state): State<Arc<AppState>>,
-    _admin: AdminAuth,
+    auth: ServerAuth,
     Path(raw_id): Path<String>,
 ) -> ApiResult<Json<ServerStats>> {
     let id = path_uuid(&raw_id)?;
+    auth.check(id)?;
     load_server(&state.pool, id).await?;
     let members: i64 = sqlx::query_scalar("SELECT count(*) FROM members WHERE server_id = $1")
         .bind(id)
@@ -81,11 +82,12 @@ pub(crate) async fn get_stats(
 
 pub(crate) async fn list_events(
     State(state): State<Arc<AppState>>,
-    _admin: AdminAuth,
+    auth: ServerAuth,
     Path(raw_id): Path<String>,
     Query(query): Query<HashMap<String, String>>,
 ) -> ApiResult<Json<AuditEventListResponse>> {
     let id = path_uuid(&raw_id)?;
+    auth.check(id)?;
     load_server(&state.pool, id).await?;
     let limit = query_i64(&query, "limit", 50, 1, Some(100))?;
     let offset = query_i64(&query, "offset", 0, 0, None)?;
