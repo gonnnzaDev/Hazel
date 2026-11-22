@@ -6,7 +6,7 @@ use axum::http::StatusCode;
 use axum::Json;
 use serde_json::json;
 
-use crate::auth::AdminAuth;
+use crate::auth::ServerAuth;
 use crate::error::{ApiError, ApiResult};
 use crate::events::queue_event;
 use crate::state::AppState;
@@ -51,7 +51,7 @@ pub(crate) fn validate_server_create(payload: &ServerCreate) -> ApiResult<(Strin
 
 pub(crate) async fn create_server(
     State(state): State<Arc<AppState>>,
-    _admin: AdminAuth,
+    _auth: ServerAuth,
     JsonBody(payload): JsonBody<ServerCreate>,
 ) -> ApiResult<(StatusCode, Json<ServerRead>)> {
     let (slug, _owner) = validate_server_create(&payload)?;

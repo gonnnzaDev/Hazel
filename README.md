@@ -31,6 +31,7 @@ computer off.
 |---|---|---|
 | Node (`rust/`) | **Rust** (axum, tokio, sqlx, rdkafka) | The application: HTTP API, WebSockets, group supervisor. |
 | Composer (`composer/`) | **Python 3 stdlib** | The *only* orchestrator: environment, build, containers, migrations, health. |
+| Desktop client (`client/`) | **Tauri 2 + React + TypeScript** | Optional PC client: join with a nickname, chat over HTTP + WebSocket. |
 
 There is no `docker compose`, no `Makefile` and no shell/PowerShell scripts.
 `python -m composer` does all of that, using the Docker CLI directly. Python is
@@ -107,6 +108,22 @@ curl -X POST localhost:7272/api/v1/servers/{id}/activate
 ```
 
 The API contract lives in [`docs/api.md`](./docs/api.md).
+
+---
+
+## Desktop client
+
+There is an optional PC client under [`client/`](./client/) built with Tauri,
+React and TypeScript. It joins a server with a nickname, shows channels and
+exchanges messages over HTTP + WebSocket. Voice, files and administration are
+not wired up yet. See [`docs/client.md`](./docs/client.md) for the design and
+[`client/README.md`](./client/README.md) for build instructions.
+
+```bash
+cd client
+npm install
+npm run tauri dev
+```
 
 ---
 

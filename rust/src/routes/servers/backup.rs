@@ -9,7 +9,7 @@ use chrono::SecondsFormat;
 use serde_json::json;
 use uuid::Uuid;
 
-use crate::auth::AdminAuth;
+use crate::auth::ServerAuth;
 use crate::error::{ApiError, ApiResult};
 use crate::state::AppState;
 
@@ -120,10 +120,11 @@ pub(crate) fn prune_old_backups(base: &StdPath, days: i64) {
 
 pub(crate) async fn create_backup(
     State(state): State<Arc<AppState>>,
-    _admin: AdminAuth,
+    auth: ServerAuth,
     Path(raw_id): Path<String>,
 ) -> ApiResult<Json<BackupRead>> {
     let id = path_uuid(&raw_id)?;
+    auth.check(id)?;
     let server = load_server(&state.pool, id).await?;
     let backup_id = Uuid::new_v4().simple().to_string();
     let created_at = utcnow();

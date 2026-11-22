@@ -5,7 +5,7 @@ use axum::response::Response;
 use axum::Json;
 use serde_json::json;
 
-use crate::auth::AdminAuth;
+use crate::auth::ServerAuth;
 use crate::error::{ApiError, ApiResult};
 use crate::events::{queue_event, record_audit};
 use crate::state::AppState;
@@ -14,10 +14,11 @@ use super::*;
 
 pub(crate) async fn activate_server(
     State(state): State<Arc<AppState>>,
-    _admin: AdminAuth,
+    auth: ServerAuth,
     Path(raw_id): Path<String>,
 ) -> ApiResult<Json<ServerRead>> {
     let id = path_uuid(&raw_id)?;
+    auth.check(id)?;
     let mut tx = state.pool.begin().await?;
     let row = load_server_tx(&mut tx, id).await?;
     let status = row.status()?;
@@ -84,10 +85,11 @@ pub(crate) async fn activate_server(
 
 pub(crate) async fn deactivate_server(
     State(state): State<Arc<AppState>>,
-    _admin: AdminAuth,
+    auth: ServerAuth,
     Path(raw_id): Path<String>,
 ) -> ApiResult<Json<ServerRead>> {
     let id = path_uuid(&raw_id)?;
+    auth.check(id)?;
     let mut tx = state.pool.begin().await?;
     let row = load_server_tx(&mut tx, id).await?;
     let status = row.status()?;
@@ -153,10 +155,11 @@ pub(crate) async fn deactivate_server(
 
 pub(crate) async fn heartbeat(
     State(state): State<Arc<AppState>>,
-    _admin: AdminAuth,
+    auth: ServerAuth,
     Path(raw_id): Path<String>,
 ) -> ApiResult<Json<ServerRead>> {
     let id = path_uuid(&raw_id)?;
+    auth.check(id)?;
     let mut tx = state.pool.begin().await?;
     load_server_tx(&mut tx, id).await?;
     sqlx::query("UPDATE servers SET last_heartbeat_at = now(), updated_at = now() WHERE id = $1")
@@ -171,10 +174,11 @@ pub(crate) async fn heartbeat(
 
 pub(crate) async fn delete_server(
     State(state): State<Arc<AppState>>,
-    _admin: AdminAuth,
+    auth: ServerAuth,
     Path(raw_id): Path<String>,
 ) -> ApiResult<Response> {
     let id = path_uuid(&raw_id)?;
+    auth.check(id)?;
     let mut tx = state.pool.begin().await?;
     let row = load_server_tx(&mut tx, id).await?;
     if row.status()?.is_terminal() {

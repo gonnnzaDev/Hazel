@@ -5,7 +5,7 @@ use axum::extract::{Path, State};
 use axum::Json;
 use serde_json::Value;
 
-use crate::auth::AdminAuth;
+use crate::auth::ServerAuth;
 use crate::error::{ApiError, ApiResult};
 use crate::state::AppState;
 
@@ -13,11 +13,12 @@ use super::*;
 
 pub(crate) async fn restore_backup(
     State(state): State<Arc<AppState>>,
-    _admin: AdminAuth,
+    auth: ServerAuth,
     Path(raw_id): Path<String>,
     JsonBody(payload): JsonBody<RestoreRequest>,
 ) -> ApiResult<Json<ServerRead>> {
     let id = path_uuid(&raw_id)?;
+    auth.check(id)?;
     let server = load_server(&state.pool, id).await?;
     let base = backup_dir(&state, id);
     let base_canonical = base.canonicalize().unwrap_or_else(|_| base.clone());

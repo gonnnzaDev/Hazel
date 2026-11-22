@@ -20,7 +20,9 @@ impl FromRequestParts<Arc<AppState>> for AdminAuth {
                 "HAZEL_ADMIN_TOKEN is not configured. Set it in your .env to manage servers.",
             ));
         }
+
         let provided = bearer_token(&parts.headers);
+
         if provided.is_empty() || provided != configured {
             return Err(ApiError::unauthenticated(
                 "A valid node administration token is required.",

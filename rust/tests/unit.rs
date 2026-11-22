@@ -1,6 +1,7 @@
+use hazel::auth::ServerAuth;
 use hazel::error::ApiError;
 use hazel::events::envelope;
-use hazel::models::ServerStatus;
+use hazel::models::{MemberRow, ServerStatus};
 use hazel::utils::{hash_token, normalize_slug, validate_nickname};
 use serde_json::json;
 use uuid::Uuid;
@@ -37,6 +38,33 @@ fn envelope_shape() {
     assert_eq!(event["server_id"], server_id.to_string());
     assert_eq!(event["data"]["x"], 1);
     assert!(event.get("channel_id").is_none());
+}
+
+fn owner_of(server_id: Uuid) -> MemberRow {
+    MemberRow {
+        id: Uuid::new_v4(),
+        server_id,
+        nickname: "luis".to_string(),
+        display_name: "Luis".to_string(),
+        role: 100,
+        is_online: true,
+        last_seen_at: None,
+        created_at: chrono::Utc::now(),
+    }
+}
+
+#[test]
+fn server_auth_node_token_accepts_any_server() {
+    assert!(ServerAuth::NodeAdmin.check(Uuid::new_v4()).is_ok());
+}
+
+#[test]
+fn server_auth_owner_token_is_scoped_to_its_server() {
+    let own = Uuid::new_v4();
+    let other = Uuid::new_v4();
+    let auth = ServerAuth::Owner(owner_of(own));
+    assert!(auth.check(own).is_ok());
+    assert_eq!(auth.check(other).unwrap_err().code, "wrong_server");
 }
 
 #[test]
