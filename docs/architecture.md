@@ -267,6 +267,39 @@ point-in-time recovery but needs continuous archiving and a much heavier setup
 on an owner's PC; a nightly-style dump on demand covers the 3-day recovery
 window with tools shipped in the runtime image (`postgresql-client`).
 
+### Owner-scoped server management
+
+El token de administración del nodo (`HAZEL_ADMIN_TOKEN`) sigue siendo válido
+para todas las operaciones de gestión, pero ya no es la única credencial: el
+token de miembro del **dueño** de un servidor también las autoriza, y solo para
+ese servidor. Se obtiene con el `join` normal del primer miembro, así que no hay
+que entregar un segundo secreto a nadie. `ServerAuth` acepta ambas credenciales
+y `check(server_id)` impide que el token de un servidor gestione otro.
+
+## 10. Desktop client
+
+**Decision:** the first client is a Tauri 2 + React + TypeScript app in
+`client/`. It is optional and lives outside the node crate and the containers.
+
+**Why:** the backend is already Rust, Tauri produces a small binary using the
+system WebView, and that WebView already provides `fetch`, `WebSocket` and
+`RTCPeerConnection`. The last one leaves the door open for voice without native
+glue code. The token is scoped to a server, so a session is stored as
+`{token, base_url}`: in Tauri inside a `0600` file under `app_config_dir`, in the
+browser under `localStorage` for development only.
+
+The client derives its Zod schemas from `rust/src/models/` and validates every
+response, because there is no generated OpenAPI client yet. Events are applied
+by id (upsert) so at-least-once delivery from the outbox doesn't duplicate
+messages in the UI. Channel-scoped events require an explicit
+`channel.subscribe`, sent after the socket opens.
+
+**Scope:** connection, join, channels, history, send, presence, typing,
+reconnection and problem+json errors. Voice, files, admin actions and multiple
+simultaneous server sessions are still pending. See [`client.md`](./client.md).
+
+---
+
 ## Pending decisions
 
 Resolved earlier in this document: server discovery (invite codes), backup
