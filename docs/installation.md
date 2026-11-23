@@ -19,6 +19,11 @@ cd hazel
 python -m composer setup
 ```
 
+En el cliente de escritorio, el instalador automático también arranca
+`docker.service`, añade al usuario real al grupo `docker` y da acceso inmediato
+al socket con ACL (`setfacl`), así que **no hace falta cerrar sesión** después
+de instalar.
+
 `setup` es idempotente y hace, en orden:
 
 1. Comprueba `python3`, `cargo` y Docker.
@@ -48,8 +53,11 @@ python -m composer health
 curl http://localhost:7272/health
 ```
 
-El token de administración está en `.env` (`HAZEL_ADMIN_TOKEN`). Envíalo como
-`Authorization: Bearer <token>` en los endpoints de gestión de servidores.
+La gestión de servidores solo se permite desde la máquina anfitriona del nodo
+(loopback, una IP local o el gateway de Docker). Un token de miembro sirve para
+chatear, no para gestionar; las peticiones desde otro equipo devuelven 403
+`host_required`. `HAZEL_ADMIN_TOKEN` sigue en `.env` para crear el primer
+servidor desde el cliente de escritorio, pero no autoriza gestión remota.
 
 ## Troubleshooting
 

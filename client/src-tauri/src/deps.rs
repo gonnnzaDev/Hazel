@@ -37,6 +37,18 @@ fn has_pkg_config(package: &str) -> bool {
     has_command("pkg-config") && output_ok("pkg-config", &["--exists", package])
 }
 
+/// `docker info` puede fallar justo después de arrancar el daemon; reintentamos
+/// unos segundos para no pedir una instalación innecesaria.
+fn docker_reachable() -> bool {
+    for _ in 0..8 {
+        if output_ok("docker", &["info"]) {
+            return true;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(500));
+    }
+    false
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Distro {
     Arch,
@@ -126,7 +138,7 @@ pub fn check_dependencies() -> Vec<Dependency> {
     );
 
     let docker_cli = has_command("docker");
-    let docker_daemon = docker_cli && output_ok("docker", &["info"]);
+    let docker_daemon = docker_cli && docker_reachable();
     let docker_install = match linux_distro() {
         Distro::Arch => "sudo pacman -S docker && sudo systemctl enable --now docker && sudo usermod -aG docker $USER",
         Distro::Debian => "sudo apt update && sudo apt install -y docker.io && sudo systemctl enable --now docker && sudo usermod -aG docker $USER",
@@ -152,7 +164,7 @@ pub fn check_dependencies() -> Vec<Dependency> {
         &mut missing,
         "Docker en marcha",
         docker_daemon,
-        "el daemon debe responder para levantar los contenedores",
+        "el daemon debe responder para levantar los contenedores; el cliente lo arranca y te da acceso solo",
         if cfg!(windows) {
             "Abre Docker Desktop y espera a que esté running"
         } else if cfg!(target_os = "macos") {
@@ -184,8 +196,8 @@ pub fn check_dependencies() -> Vec<Dependency> {
         let webkit = has_pkg_config("javascriptcoregtk-4.1")
             && has_pkg_config("webkit2gtk-4.1")
             && has_pkg_config("gtk+-3.0");
-        let indicator = has_pkg_config("ayatana-appindicator3-0.1")
-            || has_pkg_config("appindicator3-0.1");
+        let indicator =
+            has_pkg_config("ayatana-appindicator3-0.1") || has_pkg_config("appindicator3-0.1");
         let rsvg = has_pkg_config("librsvg-2.0");
 
         let (webkit_cmd, indicator_cmd, rsvg_cmd) = match linux_distro() {

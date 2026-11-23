@@ -40,6 +40,7 @@ class Service:
     environment: dict[str, str] = field(default_factory=dict)
     volumes: list[str] = field(default_factory=list)
     network: str = "hazel"
+    aliases: list[str] = field(default_factory=list)
     healthcheck: list[str] | None = None
     restart: str = "unless-stopped"
     command: list[str] | None = None
@@ -75,6 +76,8 @@ class Service:
 
         args = ["docker", "run", "-d", "--name", self.name, "--network", self.network,
                 "--restart", self.restart]
+        for alias in self.aliases:
+            args += ["--network-alias", alias]
         for port in self.ports:
             args += ["-p", port]
         for volume in self.volumes:

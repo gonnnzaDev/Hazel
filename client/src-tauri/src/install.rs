@@ -6,8 +6,39 @@
 use std::fs;
 use std::io::{BufRead, BufReader};
 use std::process::{Command, Stdio};
+use std::thread;
 
+use serde::Serialize;
 use tauri::{AppHandle, Emitter};
+
+/// Un paso de la barra de progreso del splash.
+#[derive(Clone, Serialize)]
+struct ProgressStep {
+    percent: u8,
+    label: String,
+}
+
+const PROGRESS_MARKER: &str = "@@HAZEL_PROGRESS@@";
+
+/// Los scripts escriben `@@HAZEL_PROGRESS@@NN|etiqueta`. El resto de líneas
+/// siguen siendo texto para el registro del splash.
+fn handle_line(app: &AppHandle, line: String) {
+    if let Some(rest) = line.strip_prefix(PROGRESS_MARKER) {
+        if let Some((percent, label)) = rest.split_once('|') {
+            if let Ok(percent) = percent.parse::<u8>() {
+                let _ = app.emit(
+                    "deps-progress-step",
+                    ProgressStep {
+                        percent,
+                        label: label.to_string(),
+                    },
+                );
+                return;
+            }
+        }
+    }
+    let _ = app.emit("deps-progress", line);
+}
 
 #[cfg(target_os = "linux")]
 const SCRIPT: &str = include_str!("../scripts/install-deps-linux.sh");
@@ -109,8 +140,22 @@ fn libc_geteuid() -> u32 {
 pub fn install_dependencies(app: AppHandle) -> Result<(), String> {
     let path = script_path()?;
     let mut command = elevated_command(&path)?;
+    // pkexec/sudo cambian $USER a root: pasamos quién lanzó el cliente para
+    // que el script pueda darle acceso a Docker sin cerrar la sesión.
+    if let Ok(user) = std::env::var("USER") {
+        if !user.is_empty() && user != "root" {
+            command.env("HAZEL_CLIENT_USER", user);
+        }
+    }
 
     let _ = app.emit("deps-progress", "Instalando dependencias…");
+    let _ = app.emit(
+        "deps-progress-step",
+        ProgressStep {
+            percent: 0,
+            label: "Preparando la instalación…".to_string(),
+        },
+    );
 
     let mut child = command
         .stdout(Stdio::piped())
@@ -118,18 +163,30 @@ pub fn install_dependencies(app: AppHandle) -> Result<(), String> {
         .spawn()
         .map_err(|error| error.to_string())?;
 
-    if let Some(stdout) = child.stdout.take() {
-        for line in BufReader::new(stdout).lines().map_while(Result::ok) {
-            let _ = app.emit("deps-progress", line);
+    // Leer stdout y stderr en paralelo: si se lee uno hasta el final antes que
+    // el otro, un proceso con mucha salida en stderr puede bloquearse.
+    let stdout = child.stdout.take();
+    let stderr = child.stderr.take();
+    let app_out = app.clone();
+    let reader_out = thread::spawn(move || {
+        if let Some(stream) = stdout {
+            for line in BufReader::new(stream).lines().map_while(Result::ok) {
+                handle_line(&app_out, line);
+            }
         }
-    }
-    if let Some(stderr) = child.stderr.take() {
-        for line in BufReader::new(stderr).lines().map_while(Result::ok) {
-            let _ = app.emit("deps-progress", line);
+    });
+    let app_err = app.clone();
+    let reader_err = thread::spawn(move || {
+        if let Some(stream) = stderr {
+            for line in BufReader::new(stream).lines().map_while(Result::ok) {
+                handle_line(&app_err, line);
+            }
         }
-    }
+    });
 
     let status = child.wait().map_err(|error| error.to_string())?;
+    let _ = reader_out.join();
+    let _ = reader_err.join();
     let _ = app.emit("deps-progress", "Comprobando el resultado…");
 
     if status.success() {

@@ -4,6 +4,8 @@
 set -eu
 
 log() { printf '[hazel] %s\n' "$*"; }
+# El cliente Tauri lee estas líneas y dibuja la barra de progreso.
+progress() { printf '@@HAZEL_PROGRESS@@%s|%s\n' "$1" "$2"; }
 
 if [ "$(id -u)" -eq 0 ]; then
   SUDO=""
@@ -18,7 +20,9 @@ fi
 . /etc/os-release
 
 log "Sistema detectado: $PRETTY_NAME"
+progress 8 "Sistema detectado"
 
+progress 12 "Instalando paquetes del sistema..."
 case "$ID" in
   arch|manjaro|endeavouros)
     $SUDO pacman -Syu --noconfirm python nodejs npm docker cmake base-devel \
@@ -51,22 +55,62 @@ case "$ID" in
     ;;
 esac
 
+progress 60 "Paquetes del sistema listos"
+
 if ! command -v cargo >/dev/null 2>&1; then
+  progress 65 "Instalando Rust..."
   log "Instalando Rust..."
   curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
 fi
 
+progress 82 "Configurando Docker..."
+
+# pkexec/sudo ejecutan este script como root: $USER suele ser "root". Hay que
+# averiguar quién lanzó el cliente para darle acceso a Docker a ÉL.
+REAL_USER="${HAZEL_CLIENT_USER:-${SUDO_USER:-}}"
+if [ -z "$REAL_USER" ] && [ -n "${PKEXEC_UID:-}" ]; then
+  REAL_USER="$(getent passwd "$PKEXEC_UID" 2>/dev/null | cut -d: -f1 || true)"
+fi
+if [ -z "$REAL_USER" ] && [ -n "${USER:-}" ] && [ "$USER" != "root" ]; then
+  REAL_USER="$USER"
+fi
+[ -n "$REAL_USER" ] && log "Usuario del cliente: $REAL_USER"
+
+# 1) El daemon debe estar levantado.
 if command -v systemctl >/dev/null 2>&1; then
   log "Habilitando Docker..."
-  $SUDO systemctl enable --now docker >/dev/null 2>&1 || log "No se pudo iniciar docker.service"
-  if [ -n "${SUDO}" ] && [ -n "${USER:-}" ]; then
-    $SUDO usermod -aG docker "$USER" >/dev/null 2>&1 || log "No se pudo añadir $USER al grupo docker"
-  fi
+  $SUDO systemctl enable --now docker >/dev/null 2>&1 || true
 fi
 if command -v rc-update >/dev/null 2>&1; then
   $SUDO rc-update add docker default >/dev/null 2>&1 || true
   $SUDO rc-service docker start >/dev/null 2>&1 || true
-  $SUDO addgroup "$USER" docker >/dev/null 2>&1 || true
 fi
 
+# 2) Esperar a que el socket responda (como root, aún sin permisos de usuario).
+attempt=0
+while [ $attempt -lt 20 ]; do
+  if docker info >/dev/null 2>&1; then break; fi
+  attempt=$((attempt + 1))
+  sleep 1
+done
+progress 90 "Docker en marcha"
+
+# 3) Acceso para el usuario real: permanente (grupo) e inmediato (ACL).
+#    Así no hace falta cerrar sesión ni volver a entrar.
+if [ -n "$REAL_USER" ]; then
+  getent group docker >/dev/null 2>&1 || $SUDO groupadd docker >/dev/null 2>&1 || true
+  $SUDO usermod -aG docker "$REAL_USER" >/dev/null 2>&1 || true
+  if [ -S /var/run/docker.sock ] && command -v setfacl >/dev/null 2>&1; then
+    $SUDO setfacl -m "u:${REAL_USER}:rw" /var/run/docker.sock >/dev/null 2>&1 || true
+  fi
+fi
+
+# 4) Comprobar que el usuario del cliente ya puede hablar con Docker.
+if ! su - "$REAL_USER" -c 'docker info >/dev/null 2>&1' >/dev/null 2>&1; then
+  log "Docker sigue sin responder para $REAL_USER"
+else
+  log "Docker accesible para $REAL_USER"
+fi
+
+progress 100 "Dependencias instaladas."
 log "Dependencias instaladas."

@@ -1,6 +1,7 @@
 mod commands;
 mod deps;
 mod install;
+mod node;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -10,6 +11,7 @@ pub fn run() {
             commands::save_session,
             commands::clear_session,
             commands::read_admin_token,
+            node::ensure_node,
             deps::check_dependencies,
             install::install_dependencies,
         ])

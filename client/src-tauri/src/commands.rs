@@ -1,4 +1,4 @@
-//! Persistencia local de la sesión. El token nunca se imprime ni se registra.
+//! Persistencia local de la sesión. Los tokens nunca se imprimen ni se registran.
 
 use std::fs;
 use std::path::PathBuf;
@@ -6,10 +6,21 @@ use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager};
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct JoinedServer {
+    pub server_id: String,
+    pub token: String,
+    pub base_url: String,
+    pub name: String,
+    pub slug: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Default)]
 pub struct StoredSession {
     pub token: String,
     pub base_url: String,
+    #[serde(default)]
+    pub joined: Vec<JoinedServer>,
 }
 
 fn session_file(app: &AppHandle) -> Result<PathBuf, String> {
@@ -41,9 +52,18 @@ pub fn load_session(app: AppHandle) -> Result<Option<StoredSession>, String> {
 }
 
 #[tauri::command]
-pub fn save_session(app: AppHandle, token: String, base_url: String) -> Result<(), String> {
+pub fn save_session(
+    app: AppHandle,
+    token: String,
+    base_url: String,
+    joined: Vec<JoinedServer>,
+) -> Result<(), String> {
     let path = session_file(&app)?;
-    let session = StoredSession { token, base_url };
+    let session = StoredSession {
+        token,
+        base_url,
+        joined,
+    };
     let content = serde_json::to_string(&session).map_err(|e| e.to_string())?;
     fs::write(&path, content).map_err(|e| e.to_string())?;
     restrict_permissions(&path)
@@ -64,10 +84,7 @@ pub fn read_admin_token() -> Option<String> {
             for line in content.lines() {
                 let line = line.trim();
                 if let Some(value) = line.strip_prefix("HAZEL_ADMIN_TOKEN=") {
-                    let value = value
-                        .trim()
-                        .trim_matches(|c| c == '"' || c == '\'')
-                        .trim();
+                    let value = value.trim().trim_matches(|c| c == '"' || c == '\'').trim();
                     if !value.is_empty() {
                         return Some(value.to_string());
                     }
@@ -81,11 +98,18 @@ pub fn read_admin_token() -> Option<String> {
     None
 }
 
+/// Cierra la sesión activa pero conserva el registro de servidores ya unidos.
 #[tauri::command]
 pub fn clear_session(app: AppHandle) -> Result<(), String> {
     let path = session_file(&app)?;
-    if path.exists() {
-        fs::remove_file(&path).map_err(|e| e.to_string())?;
+    if !path.exists() {
+        return Ok(());
     }
-    Ok(())
+    let content = fs::read_to_string(&path).map_err(|e| e.to_string())?;
+    let mut session: StoredSession = serde_json::from_str(&content).map_err(|e| e.to_string())?;
+    session.token.clear();
+    session.base_url.clear();
+    let content = serde_json::to_string(&session).map_err(|e| e.to_string())?;
+    fs::write(&path, content).map_err(|e| e.to_string())?;
+    restrict_permissions(&path)
 }

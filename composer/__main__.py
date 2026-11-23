@@ -115,6 +115,8 @@ def services(values: dict[str, str], profile: str) -> dict[str, Service]:
         ports=[f"{env.get(values, 'KAFKA_EXTERNAL_PORT', '9092')}:9092"],
         environment=KAFKA_ENV,
         volumes=[f"hazel-kafka-data{suffix}:/var/lib/kafka/data"],
+        # El quorum KRaft y el nodo full usan el host `kafka` dentro de la red.
+        aliases=["kafka"],
     )
     result = {"postgres": postgres, "kafka": kafka}
 
@@ -292,7 +294,7 @@ def migrate_schema(values: dict[str, str], postgres: Service) -> None:
     database = env.get(values, "POSTGRES_DB", "hazel")
     base = ["psql", "-U", user, "-d", database, "-v", "ON_ERROR_STOP=1"]
 
-    postgres.exec(["sh", "-c",
+    postgres.exec(["psql", "-U", user, "-d", database, "-v", "ON_ERROR_STOP=1", "-c",
                    "CREATE TABLE IF NOT EXISTS _composer_migrations "
                    "(name text PRIMARY KEY, applied_at timestamptz DEFAULT now())"])
     applied = set(postgres.exec(

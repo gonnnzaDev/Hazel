@@ -1,16 +1,22 @@
 import mark from '../assets/hazel-mark.svg';
-import type { Dependency } from '../state/deps';
+import type { Dependency, InstallProgress } from '../state/deps';
 
 type Props = {
   missing: Dependency[];
   checking: boolean;
   installLog: string[];
+  installStep: InstallProgress | null;
   installError: string | null;
-  onContinue: () => void;
 };
 
 /** Pantalla de arranque: logo animado e instalación automática de dependencias. */
-export function Splash({ missing, checking, installLog, installError, onContinue }: Props) {
+export function Splash({
+  missing,
+  checking,
+  installLog,
+  installStep,
+  installError,
+}: Props) {
   async function copyAll() {
     const text = missing.map((dep) => `# ${dep.name}\n${dep.install}`).join('\n\n');
     try {
@@ -37,6 +43,23 @@ export function Splash({ missing, checking, installLog, installError, onContinue
         {installing && (
           <div className="splash-deps">
             <p className="splash-deps-title">Instalando lo que falta…</p>
+            <div
+              className="install-bar"
+              role="progressbar"
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={installStep?.percent ?? 0}
+              aria-label="Progreso de la instalación"
+            >
+              <span
+                className="install-bar-fill"
+                style={{ width: `${installStep?.percent ?? 4}%` }}
+              />
+            </div>
+            <div className="install-bar-meta">
+              <span>{installStep?.label ?? 'Preparando la instalación…'}</span>
+              <span>{installStep?.percent ?? 0}%</span>
+            </div>
             <pre className="splash-log">{installLog.slice(-12).join('\n')}</pre>
           </div>
         )}
@@ -56,9 +79,6 @@ export function Splash({ missing, checking, installLog, installError, onContinue
             </ul>
             <div className="splash-deps-actions">
               <button type="button" onClick={() => void copyAll()}>Copiar comandos</button>
-              <button type="button" className="splash-continue" onClick={onContinue}>
-                Continuar igualmente
-              </button>
             </div>
           </div>
         )}
