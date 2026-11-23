@@ -105,3 +105,38 @@ export class HazelSocket {
     this.heartbeatTimer = null;
   }
 }
+
+/** Señalización de llamadas: offer/answer/ice se reenvían a los pares de la sala. */
+export class CallSocket {
+  private ws: WebSocket | null = null;
+
+  constructor(private readonly onMessage: (message: Record<string, unknown>) => void) {}
+
+  connect(baseUrl: string, serverId: string, channelId: string, token: string) {
+    const wsBase = baseUrl.replace(/^http/, 'ws').replace(/\/$/, '');
+    const url = `${wsBase}/api/v1/servers/${serverId}/channels/${channelId}/call?token=${encodeURIComponent(token)}`;
+    this.ws = new WebSocket(url);
+    this.ws.onmessage = (event) => {
+      if (typeof event.data !== 'string') return;
+      try {
+        const parsed: unknown = JSON.parse(event.data);
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+          this.onMessage(parsed as Record<string, unknown>);
+        }
+      } catch {
+        // Se ignoran mensajes que no son JSON.
+      }
+    };
+  }
+
+  sendSignal(type: 'offer' | 'answer' | 'ice' | 'state', payload: Record<string, unknown> = {}) {
+    if (this.ws?.readyState === WebSocket.OPEN) {
+      this.ws.send(JSON.stringify({ type, ...payload }));
+    }
+  }
+
+  close() {
+    this.ws?.close(1000, 'client disconnect');
+    this.ws = null;
+  }
+}

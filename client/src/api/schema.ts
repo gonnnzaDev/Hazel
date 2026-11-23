@@ -39,6 +39,17 @@ export const channelSchema = z.object({
   is_default: z.boolean(),
 });
 
+export const inviteSchema = z.object({
+  code: z.string(),
+  server_id: z.string(),
+  created_by: z.string(),
+  created_at: z.string(),
+  expires_at: z.string(),
+  single_use: z.boolean(),
+  consumed: z.boolean(),
+  has_password: z.boolean(),
+});
+
 export const serverSchema = z.object({
   id: z.string(),
   name: z.string(),
@@ -88,6 +99,91 @@ export const messageListSchema = z.object({
   next_cursor: z.string().nullable(),
 });
 
+export const healthSchema = z.object({
+  status: z.string(),
+  service: z.string(),
+  version: z.string(),
+  environment: z.string(),
+  timestamp: z.string(),
+});
+export const readySchema = z.object({
+  status: z.string(),
+  checks: z.record(z.unknown()),
+});
+export const tokenResponseSchema = z.object({
+  token: z.string(),
+  expires_at: z.string().nullable(),
+});
+export const memberListSchema = z.object({
+  items: z.array(memberSchema),
+  total: z.number(),
+  limit: z.number(),
+  offset: z.number(),
+});
+export const serverStatsSchema = z.object({
+  server_id: z.string(),
+  members: z.number(),
+  messages: z.number(),
+  attachment_bytes: z.number(),
+  db_bytes: z.number(),
+  total_bytes: z.number(),
+});
+export const auditEventSchema = z.object({
+  id: z.string(),
+  server_id: z.string(),
+  actor_nickname: z.string().nullable(),
+  action: z.string(),
+  target_type: z.string().nullable(),
+  target_id: z.string().nullable(),
+  data: z.record(z.unknown()),
+  created_at: z.string(),
+});
+export const auditEventListSchema = z.object({
+  items: z.array(auditEventSchema),
+  total: z.number(),
+  limit: z.number(),
+  offset: z.number(),
+});
+export const backupSchema = z.object({
+  backup_id: z.string(),
+  path: z.string(),
+  size: z.number(),
+  created_at: z.string(),
+});
+export const attachmentSchema = z.object({
+  id: z.string(),
+  message_id: z.string(),
+  filename: z.string(),
+  content_type: z.string(),
+  size: z.number(),
+  storage_key: z.string(),
+});
+export const callParticipantsSchema = z.object({
+  channel_id: z.string(),
+  participants: z.array(
+    z.object({
+      member_id: z.string(),
+      nickname: z.string(),
+      display_name: z.string(),
+      mic: z.boolean(),
+      cam: z.boolean(),
+    }),
+  ),
+  count: z.number(),
+  max: z.number(),
+});
+
+export const nodeInfoSchema = z.object({
+  service: z.string(),
+  version: z.string(),
+  environment: z.string(),
+  bind_host: z.string(),
+  bind_port: z.number(),
+  is_listening: z.boolean(),
+  can_manage: z.boolean(),
+  kafka_topic_prefix: z.string(),
+});
+
 export const nodeAddressSchema = z.object({
   port: z.number(),
   bind_host: z.string(),
@@ -101,6 +197,17 @@ export const nodeAddressSchema = z.object({
       loopback: z.boolean(),
     }),
   ),
+});
+
+export const serverAddressSchema = z.object({
+  server_id: z.string(),
+  slug: z.string(),
+  server_name: z.string(),
+  is_active: z.boolean(),
+  host: z.string().nullable(),
+  port: z.number(),
+  address: z.string().nullable(),
+  node: nodeAddressSchema,
 });
 
 export const meSchema = z.object({
@@ -131,10 +238,19 @@ export type Member = z.infer<typeof memberSchema>;
 export type ServerSummary = z.infer<typeof serverSummarySchema>;
 export type JoinResponse = z.infer<typeof joinResponseSchema>;
 export type Channel = z.infer<typeof channelSchema>;
+export type Invite = z.infer<typeof inviteSchema>;
 export type Server = z.infer<typeof serverSchema>;
 export type ServerList = z.infer<typeof serverListSchema>;
 export type Message = z.infer<typeof messageSchema>;
 export type MessageList = z.infer<typeof messageListSchema>;
 export type NodeAddress = z.infer<typeof nodeAddressSchema>;
+export type NodeInfo = z.infer<typeof nodeInfoSchema>;
 export type Me = z.infer<typeof meSchema>;
 export type HazelEvent = z.infer<typeof eventSchema>;
+export type MemberList = z.infer<typeof memberListSchema>;
+export type ServerStats = z.infer<typeof serverStatsSchema>;
+export type ServerAddress = z.infer<typeof serverAddressSchema>;
+export type AuditEventList = z.infer<typeof auditEventListSchema>;
+export type Backup = z.infer<typeof backupSchema>;
+export type Attachment = z.infer<typeof attachmentSchema>;
+export type CallParticipants = z.infer<typeof callParticipantsSchema>;

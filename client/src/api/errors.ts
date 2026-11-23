@@ -36,6 +36,39 @@ export async function readError(response: Response): Promise<ApiError> {
   }
 }
 
+const FIELD_NAMES: Record<string, string> = {
+  name: 'nombre',
+  slug: 'identificador',
+  description: 'descripción',
+  max_members: 'número máximo de miembros',
+  display_name: 'nombre visible',
+  nickname: 'apodo',
+  content: 'mensaje',
+  ttl_seconds: 'duración de la invitación',
+};
+
+function validationFields(problem: Record<string, unknown>): string[] {
+  const raw = problem.errors;
+  const list = Array.isArray(raw)
+    ? raw
+    : raw && typeof raw === 'object' && Array.isArray((raw as { errors?: unknown }).errors)
+      ? (raw as { errors: unknown[] }).errors
+      : [];
+  const fields: string[] = [];
+  for (const item of list) {
+    if (!item || typeof item !== 'object') continue;
+    const loc = (item as { loc?: unknown }).loc;
+    if (Array.isArray(loc)) {
+      const key = loc[loc.length - 1];
+      if (typeof key === 'string') fields.push(FIELD_NAMES[key] ?? key);
+    } else {
+      const msg = (item as { msg?: unknown }).msg;
+      if (typeof msg === 'string') fields.push(msg);
+    }
+  }
+  return [...new Set(fields)];
+}
+
 const FRIENDLY: Record<string, string> = {
   invalid_token: 'Tu sesión expiró. Vuelve a unirte.',
   unauthenticated: 'Necesitas unirte con un apodo primero.',
@@ -52,12 +85,17 @@ const FRIENDLY: Record<string, string> = {
   message_too_large: 'El mensaje supera los 4000 bytes.',
   rate_limited: 'Estás escribiendo demasiado rápido. Espera un momento.',
   not_admin: 'Necesitas permisos de administrador.',
+  host_required: 'Solo la máquina anfitriona del nodo puede gestionar el servidor.',
   not_message_author: 'Solo el autor puede editar ese mensaje.',
   connection_error: 'No se pudo conectar con el nodo. Revisa la dirección.',
 };
 
 export function friendlyError(error: unknown): string {
   if (error instanceof ApiError) {
+    if (error.code === 'request_validation_error') {
+      const fields = validationFields(error.problem);
+      if (fields.length > 0) return `Revisa ${fields.join(', ')}.`;
+    }
     return FRIENDLY[error.code] ?? error.message;
   }
   if (error instanceof TypeError) {

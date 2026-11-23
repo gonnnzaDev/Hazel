@@ -3,6 +3,15 @@ import { invoke, isTauri } from '@tauri-apps/api/core';
 export interface StoredSession {
   token: string;
   base_url: string;
+  joined: JoinedServer[];
+}
+
+export interface JoinedServer {
+  server_id: string;
+  token: string;
+  base_url: string;
+  name: string;
+  slug: string;
 }
 
 const KEY = 'hazel.session';
@@ -18,10 +27,22 @@ export async function loadStoredSession(): Promise<StoredSession | null> {
   }
   try {
     const raw = localStorage.getItem(KEY);
-    return raw ? (JSON.parse(raw) as StoredSession) : null;
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<StoredSession>;
+    return {
+      token: parsed.token ?? '',
+      base_url: parsed.base_url ?? '',
+      joined: parsed.joined ?? [],
+    };
   } catch {
     return null;
   }
+}
+
+/** Solo en Tauri: levanta servicios y nodo si no están respondiendo. */
+export async function ensureNode(): Promise<boolean> {
+  if (!isTauri()) return false;
+  return await invoke<boolean>('ensure_node');
 }
 
 /** Solo en Tauri: lee HAZEL_ADMIN_TOKEN del .env local (nunca se muestra). */
@@ -38,7 +59,11 @@ export async function saveStoredSession(session: StoredSession | null): Promise<
   if (isTauri()) {
     try {
       if (session) {
-        await invoke('save_session', { token: session.token, baseUrl: session.base_url });
+        await invoke('save_session', {
+          token: session.token,
+          baseUrl: session.base_url,
+          joined: session.joined,
+        });
       } else {
         await invoke('clear_session');
       }
@@ -47,6 +72,14 @@ export async function saveStoredSession(session: StoredSession | null): Promise<
     }
     return;
   }
-  if (session) localStorage.setItem(KEY, JSON.stringify(session));
-  else localStorage.removeItem(KEY);
+  if (session) {
+    localStorage.setItem(KEY, JSON.stringify(session));
+  } else {
+    // En el navegador conservamos el registro al cerrar sesión.
+    const previous = await loadStoredSession();
+    localStorage.setItem(
+      KEY,
+      JSON.stringify({ token: '', base_url: '', joined: previous?.joined ?? [] }),
+    );
+  }
 }
