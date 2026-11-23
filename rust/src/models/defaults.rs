@@ -1,6 +1,6 @@
 use super::*;
 
-pub(crate) fn default_max_members() -> i32 {
+pub(crate) fn default_max_members() -> i16 {
     50
 }
 

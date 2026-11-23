@@ -1,3 +1,5 @@
+/// Etiquetas históricas. Solo `Member` se asigna ahora: la autoridad de
+/// gestión depende de la máquina anfitriona, no del rol del miembro.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Role {
     Member = 10,
@@ -19,8 +21,5 @@ impl Role {
             50 => Self::Admin,
             _ => Self::Member,
         }
-    }
-    pub fn can_administer(self) -> bool {
-        (self as i16) >= 50
     }
 }

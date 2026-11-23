@@ -6,7 +6,7 @@ use axum::response::Response;
 use axum::Json;
 use serde_json::json;
 
-use crate::auth::AuthMember;
+use crate::auth::{AuthMember, HostAdmin};
 use crate::error::{ApiError, ApiResult};
 use crate::events::{queue_event, record_audit};
 use crate::state::AppState;
@@ -63,6 +63,7 @@ pub(crate) async fn kick_member(
     State(state): State<Arc<AppState>>,
     Path((raw_id, nickname)): Path<(String, String)>,
     AuthMember(actor): AuthMember,
+    _host: HostAdmin,
 ) -> ApiResult<Response> {
     let server_id = path_uuid(&raw_id)?;
     let target = load_member_by_nickname(&state.pool, server_id, &nickname).await?;
@@ -72,27 +73,11 @@ pub(crate) async fn kick_member(
                 .with("code", "wrong_server"),
         );
     }
-    let actor_role = Role::from_i16(actor.role);
-    let target_role = Role::from_i16(target.role);
-    if !actor_role.can_administer() {
-        return Err(
-            ApiError::forbidden("You must be an administrator to kick someone.")
-                .with("code", "not_admin"),
-        );
-    }
     if actor.id == target.id {
         return Err(
             ApiError::validation("You cannot kick yourself. Use 'leave the server'.")
                 .with("code", "cannot_kick_self"),
         );
-    }
-    if (actor.role) <= target.role {
-        return Err(ApiError::forbidden(
-            "You cannot kick someone with an equal or higher role than yours.",
-        )
-        .with("code", "role_hierarchy")
-        .with("your_role", actor_role.label())
-        .with("their_role", target_role.label()));
     }
     let target_data = MemberRead::from(target.clone());
     let mut tx = state.pool.begin().await?;
@@ -100,9 +85,6 @@ pub(crate) async fn kick_member(
         .bind(target.id)
         .execute(&mut *tx)
         .await?;
-    if target_role == Role::Owner {
-        promote_oldest(&mut tx, server_id).await?;
-    }
     queue_event(
         &mut tx,
         "member.left",

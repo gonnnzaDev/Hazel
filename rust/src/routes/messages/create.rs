@@ -98,7 +98,13 @@ pub(crate) async fn create_message(
     .bind(json!([]))
     .execute(&mut *tx)
     .await?;
-    let row = load_message(&state.pool, id).await?;
+    // Leer dentro de la transacción: desde el pool todavía no se ve el INSERT.
+    let row: MessageRow = sqlx::query_as(&format!(
+        "SELECT {MESSAGE_COLUMNS} FROM messages WHERE id = $1"
+    ))
+    .bind(id)
+    .fetch_one(&mut *tx)
+    .await?;
     let read = build_read(&state.pool, &row).await?;
     queue_event(
         &mut tx,

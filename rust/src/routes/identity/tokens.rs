@@ -75,7 +75,7 @@ pub(crate) async fn update_me(
     AuthMember(member): AuthMember,
     JsonBody(payload): JsonBody<MeUpdate>,
 ) -> ApiResult<Json<MemberRead>> {
-    let cleaned = clean_display_name(Some(payload.display_name), "")?;
+    let cleaned = clean_display_name(Some(payload.name), "")?;
     sqlx::query("UPDATE members SET display_name = $2, updated_at = now() WHERE id = $1")
         .bind(member.id)
         .bind(&cleaned)

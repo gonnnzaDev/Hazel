@@ -4,5 +4,5 @@ use serde::Deserialize;
 pub struct ServerUpdate {
     pub name: Option<String>,
     pub description: Option<String>,
-    pub max_members: Option<i32>,
+    pub max_members: Option<i16>,
 }

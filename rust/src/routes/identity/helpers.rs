@@ -85,25 +85,6 @@ pub(crate) async fn issue_token(
     })
 }
 
-pub(crate) async fn promote_oldest(
-    tx: &mut Transaction<'_, sqlx::Postgres>,
-    server_id: Uuid,
-) -> ApiResult<()> {
-    let successor: Option<Uuid> = sqlx::query_scalar(
-        "SELECT id FROM members WHERE server_id = $1 ORDER BY created_at, nickname LIMIT 1",
-    )
-    .bind(server_id)
-    .fetch_optional(&mut **tx)
-    .await?;
-    if let Some(id) = successor {
-        sqlx::query("UPDATE members SET role = 100, updated_at = now() WHERE id = $1")
-            .bind(id)
-            .execute(&mut **tx)
-            .await?;
-    }
-    Ok(())
-}
-
 pub(crate) fn server_summary(row: &ServerRow) -> ServerSummary {
     ServerSummary {
         id: row.id.to_string(),

@@ -43,7 +43,7 @@ pub(crate) fn validate_server_create(payload: &ServerCreate) -> ApiResult<(Strin
                 .with("slug", payload.slug.clone()),
         );
     }
-    let nickname = validate_nickname(&payload.owner_nickname)?;
+    let nickname = validate_nickname(&payload.owner_name)?;
     Ok((slug, nickname))
 }
 

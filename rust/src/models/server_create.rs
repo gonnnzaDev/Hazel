@@ -8,7 +8,7 @@ pub struct ServerCreate {
     pub slug: String,
     #[serde(default)]
     pub description: Option<String>,
-    pub owner_nickname: String,
+    pub owner_name: String,
     #[serde(default = "default_max_members")]
-    pub max_members: i32,
+    pub max_members: i16,
 }

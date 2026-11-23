@@ -1,3 +1,4 @@
+use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -12,6 +13,7 @@ use hazel::events::{EventBus, KafkaFanout};
 use hazel::routes::app_router;
 use hazel::state::AppState;
 use hazel::supervisor::GroupSupervisor;
+use hazel::utils::host_ips;
 
 #[derive(Debug)]
 enum Role {
@@ -114,6 +116,7 @@ async fn main() {
         kafka: kafka.clone(),
         supervisor,
         calls: Arc::new(CallManager::default()),
+        host_ips: host_ips(),
         server_id,
     });
 
@@ -142,10 +145,13 @@ async fn main() {
         let _ = tokio::signal::ctrl_c().await;
     };
 
-    axum::serve(listener, app)
-        .with_graceful_shutdown(shutdown)
-        .await
-        .ok();
+    axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<SocketAddr>(),
+    )
+    .with_graceful_shutdown(shutdown)
+    .await
+    .ok();
 
     if let Some(supervisor) = &state.supervisor {
         supervisor.stop().await;

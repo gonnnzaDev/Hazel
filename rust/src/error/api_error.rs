@@ -73,6 +73,7 @@ impl ApiError {
         Self::new(409, "server_inactive", "Server inactive", detail)
     }
     pub fn request_validation(errors: Value) -> Self {
+        tracing::warn!(errors = %errors, "request validation failed");
         Self::new(
             422,
             "request_validation_error",

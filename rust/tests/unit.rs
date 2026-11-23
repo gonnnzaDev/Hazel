@@ -1,9 +1,10 @@
-use hazel::auth::ServerAuth;
 use hazel::error::ApiError;
 use hazel::events::envelope;
-use hazel::models::{MemberRow, ServerStatus};
-use hazel::utils::{hash_token, normalize_slug, validate_nickname};
+use hazel::models::ServerStatus;
+use hazel::utils::{hash_token, is_host_address, normalize_slug, validate_nickname};
 use serde_json::json;
+use std::collections::HashSet;
+use std::net::{IpAddr, Ipv4Addr};
 use uuid::Uuid;
 
 #[test]
@@ -40,31 +41,24 @@ fn envelope_shape() {
     assert!(event.get("channel_id").is_none());
 }
 
-fn owner_of(server_id: Uuid) -> MemberRow {
-    MemberRow {
-        id: Uuid::new_v4(),
-        server_id,
-        nickname: "luis".to_string(),
-        display_name: "Luis".to_string(),
-        role: 100,
-        is_online: true,
-        last_seen_at: None,
-        created_at: chrono::Utc::now(),
-    }
-}
-
 #[test]
-fn server_auth_node_token_accepts_any_server() {
-    assert!(ServerAuth::NodeAdmin.check(Uuid::new_v4()).is_ok());
-}
+fn only_host_addresses_can_manage() {
+    let hosts: HashSet<IpAddr> = [
+        IpAddr::V4(Ipv4Addr::LOCALHOST),
+        IpAddr::V4(Ipv4Addr::new(192, 168, 1, 10)),
+    ]
+    .into_iter()
+    .collect();
 
-#[test]
-fn server_auth_owner_token_is_scoped_to_its_server() {
-    let own = Uuid::new_v4();
-    let other = Uuid::new_v4();
-    let auth = ServerAuth::Owner(owner_of(own));
-    assert!(auth.check(own).is_ok());
-    assert_eq!(auth.check(other).unwrap_err().code, "wrong_server");
+    assert!(is_host_address(IpAddr::V4(Ipv4Addr::LOCALHOST), &hosts));
+    assert!(is_host_address(
+        IpAddr::V4(Ipv4Addr::new(192, 168, 1, 10)),
+        &hosts
+    ));
+    assert!(!is_host_address(
+        IpAddr::V4(Ipv4Addr::new(8, 8, 8, 8)),
+        &hosts
+    ));
 }
 
 #[test]

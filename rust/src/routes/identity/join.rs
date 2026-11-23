@@ -27,8 +27,10 @@ pub(crate) async fn join(
         .with("state", status));
     }
 
-    let nickname = validate_nickname(&payload.nickname)?;
-    let display_name = clean_display_name(payload.display_name, &capitalize(&nickname))?;
+    let name = payload.name.trim();
+    // Un solo nombre público: el identificador interno se deriva de él.
+    let nickname = validate_nickname(name)?;
+    let display_name = clean_display_name(Some(name.to_string()), "")?;
 
     let mut tx = state.pool.begin().await?;
     let existing: Option<MemberRow> = {
@@ -43,11 +45,8 @@ pub(crate) async fn join(
     let member = if let Some(member) = existing {
         member
     } else {
-        let count: i64 = sqlx::query_scalar("SELECT count(*) FROM members WHERE server_id = $1")
-            .bind(server_id)
-            .fetch_one(&mut *tx)
-            .await?;
-        let role = if count == 0 { 100 } else { 10 };
+        // Quien entra siempre es miembro: el único administrador es el host.
+        let role = Role::Member as i16;
         let id = new_id();
         sqlx::query(
             "INSERT INTO members (id, server_id, nickname, display_name, role, is_online, created_at, updated_at) \
@@ -107,12 +106,4 @@ pub(crate) async fn join(
             server: server_summary(&server),
         }),
     ))
-}
-
-pub(crate) fn capitalize(raw: &str) -> String {
-    let mut chars = raw.chars();
-    match chars.next() {
-        None => String::new(),
-        Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
-    }
 }

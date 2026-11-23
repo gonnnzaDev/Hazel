@@ -60,13 +60,20 @@ be designed separately.
 
 ### Roles
 
-The server owner is its administrator. Roles are modeled by level:
+There is a single administrator: the host machine that runs the node. Joining a
+server never grants ownership, and no member can be promoted. Every join gets
+the `member` role; `admin`/`owner` remain only as legacy labels in the database.
 
 | Level | Role | Can |
 |---|---|---|
-| `owner` | Owner | Everything, including deleting the server |
-| `admin` | Administrator | Manage channels and members |
-| `member` | Member | Chat |
+| `member` | Member | Chat, and manage the server only when the request comes from the host |
+| `admin`, `owner` | Legacy labels | No extra permissions |
+
+The host is recognized by the source address of the request: loopback, an
+address assigned to the machine, or the default gateway (Docker bridge). Axum
+receives it through `ConnectInfo<SocketAddr>`; `HostAdmin` is the extractor used
+by management handlers. `GET /api/v1/node` exposes `can_manage` so the client can
+hide management controls on remote machines.
 
 ---
 
@@ -267,14 +274,14 @@ point-in-time recovery but needs continuous archiving and a much heavier setup
 on an owner's PC; a nightly-style dump on demand covers the 3-day recovery
 window with tools shipped in the runtime image (`postgresql-client`).
 
-### Owner-scoped server management
+### Host-scoped server management
 
-El token de administración del nodo (`HAZEL_ADMIN_TOKEN`) sigue siendo válido
-para todas las operaciones de gestión, pero ya no es la única credencial: el
-token de miembro del **dueño** de un servidor también las autoriza, y solo para
-ese servidor. Se obtiene con el `join` normal del primer miembro, así que no hay
-que entregar un segundo secreto a nadie. `ServerAuth` acepta ambas credenciales
-y `check(server_id)` impide que el token de un servidor gestione otro.
+Todas las operaciones de gestión (`ServerAuth` en los handlers de `servers/`,
+más `HostAdmin` en canales, invitaciones, expulsiones y ajustes) exigen que la
+petición llegue desde la máquina anfitriona. Ni un token de miembro ni una copia
+de `HAZEL_ADMIN_TOKEN` permiten gestionar desde otro equipo: eso devuelve 403
+`host_required`. El token de miembro sigue siendo necesario para identificarse
+dentro del servidor, pero no otorga permisos de gestión.
 
 ## 10. Desktop client
 

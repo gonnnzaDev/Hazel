@@ -4,7 +4,7 @@ use axum::extract::{Path, State};
 use axum::Json;
 use serde_json::json;
 
-use crate::auth::AuthMember;
+use crate::auth::{AuthMember, HostAdmin};
 use crate::error::{ApiError, ApiResult};
 use crate::state::AppState;
 
@@ -14,11 +14,11 @@ pub(crate) async fn update_channel(
     State(state): State<Arc<AppState>>,
     Path((raw_server, raw_channel)): Path<(String, String)>,
     AuthMember(member): AuthMember,
+    _host: HostAdmin,
     JsonBody(payload): JsonBody<crate::models::ChannelUpdate>,
 ) -> ApiResult<Json<ChannelRead>> {
     let server_id = path_uuid(&raw_server)?;
     require_same_server(member.server_id, server_id)?;
-    require_admin(member.role)?;
     let channel_id = path_uuid(&raw_channel)?;
     let channel = load_channel(&state.pool, server_id, channel_id).await?;
     let name = match &payload.name {

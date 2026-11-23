@@ -133,11 +133,15 @@ the owner to type one.
 | `[x]` | `GET /api/v1/servers/{server_id}` | Detail with channels. |
 | `[x]` | `GET /api/v1/servers/by-slug/{slug}` | Lookup by identifier. |
 | `[x]` | `PATCH /api/v1/servers/{server_id}` | Edit name, description, limits. |
-| `[x]` | `DELETE /api/v1/servers/{server_id}` | Delete permanently. |
+| `[x]` | `DELETE /api/v1/servers/{server_id}` | Soft delete: marks the server `deleted` (terminal); events and audit are kept. |
 | `[x]` | `POST /api/v1/servers/{server_id}/activate` | Active server. |
 | `[x]` | `POST /api/v1/servers/{server_id}/deactivate` | Inactive server, keeps data. |
 | `[x]` | `POST /api/v1/servers/{server_id}/heartbeat` | Process heartbeat. |
 | `[x]` | `GET /api/v1/servers/{server_id}/address` | Address: node port + its slug. |
+
+Create body: `{ "name": "Luis House", "slug": "luis-house", "description": null,
+"owner_name": "Luis" }`. `owner_name` is the creator's name, not a second field
+for the server.
 
 ### States
 
@@ -155,30 +159,33 @@ the owner to type one.
 
 ---
 
-## 3. Identity — nicknames
+## 3. Identity — names
 
 Here is the product heart: **no global accounts**. Someone opens a node port,
-picks a nickname and joins. No email, no password, no registration.
+picks a name and joins. No email, no password, no registration.
+
+There is a single public **name**. The server derives an internal `nickname`
+from it for URL-safe lookups, but callers only send and display `name`. The
+name can be changed later with `PATCH /me`.
 
 | Method | Route | What it does |
 |---|---|---|
-| `[x]` | `POST /api/v1/servers/{server_id}/join` | Join with a nickname. Returns token. |
+| `[x]` | `POST /api/v1/servers/{server_id}/join` | Join with a name. Returns token. |
 | `[x]` | `POST /api/v1/servers/{server_id}/leave` | Leave the server. |
 | `[x]` | `POST /api/v1/auth/refresh` | Renew token (rotates the old one). |
 | `[x]` | `POST /api/v1/auth/logout` | Revoke this device token. |
 | `[x]` | `POST /api/v1/auth/logout-all` | Revoke all tokens on this server. |
 | `[x]` | `GET /api/v1/me` | Who I am on this token's server. |
-| `[x]` | `PATCH /api/v1/me` | Change my display name. |
+| `[x]` | `PATCH /api/v1/me` | Change my name. |
 | `[x]` | `GET /api/v1/servers/{server_id}/members` | List members. |
 | `[x]` | `GET /api/v1/servers/{server_id}/members/{nickname}` | See a member. |
-| `[x]` | `DELETE /api/v1/servers/{server_id}/members/{nickname}` | Kick. |
-| `[x]` | `PUT /api/v1/servers/{server_id}/members/{nickname}/role` | Change role (`?role=admin`). |
+| `[x]` | `DELETE /api/v1/servers/{server_id}/members/{nickname}` | Kick (host only). |
 
 ### `POST /api/v1/servers/{server_id}/join`
 
 ```http
 POST /api/v1/servers/01a1.../join
-{ "nickname": "Ana" }
+{ "name": "Ana" }
 ```
 
 ```json
@@ -189,7 +196,7 @@ POST /api/v1/servers/01a1.../join
     "id": "01a1...",
     "nickname": "ana",
     "display_name": "Ana",
-    "role": "owner",
+    "role": "member",
     "is_online": false,
     "last_seen_at": null,
     "joined_at": "2026-10-11T23:50:17Z"
@@ -198,9 +205,12 @@ POST /api/v1/servers/01a1.../join
 }
 ```
 
-The role comes out as **text** (`"owner"`), not the number stored in the DB.
-The DB sorts by number because comparing roles is comparing integers; the API
-speaks words because a client shouldn't need to know admin is 50.
+`PATCH /api/v1/me` takes `{ "name": "Ana María" }` and returns the updated
+member. Only the public name changes; the derived `nickname` stays stable.
+
+The role comes out as **text** (`"member"`), not the number stored in the DB.
+The DB still sorts by number for legacy rows; the API speaks words. Roles never
+grant management rights: only the host machine does.
 
 **The token is scoped to the server.** The same token doesn't work on another
 server. If Ana is on `luis-house` and `tuesday-gym`, she has **two different
@@ -229,67 +239,54 @@ The trade-off is explicit: someone guessing your nickname joins as you. On a
 local network with friends it's acceptable; on an open server it wouldn't be,
 which is why rate limits and member caps exist.
 
-### The owner
+### The host is the only admin
 
-- The **first member** of a server is its owner.
-- If the owner leaves, the role passes to the **oldest** remaining member. A
-  server without owner couldn't be managed or deleted.
-- Not even an admin can kick the owner. The owner leaves if they want.
-- The owner role isn't assigned or removed via API.
+There is exactly one administrator: **the machine that runs the node**. Nobody
+who joins a server becomes its owner, and no member can be promoted. The change
+of machine that used to happen when the owner left no longer exists: management
+never leaves the host.
 
 ---
 
 ## 4. Roles and permissions
 
-| Method | Route | What it does |
-|---|---|---|
-| `[x]` | `PUT /api/v1/servers/{server_id}/members/{nickname}/role?role=admin` | Change a member's role. No body. Returns the updated member. |
-
-A member stops being `member` and becomes `admin` with
-`PUT .../role?role=admin`. The only accepted query values are `member` and
-`admin`; anything else returns 422 `invalid_role` with
-`{"allowed": ["member", "admin"]}`.
+There is no role-management endpoint. `PUT .../members/{nickname}/role` was
+removed; every member of every server has the same `member` role.
 
 ### Base roles
 
-Roles are stored as numbers (`member=10`, `admin=50`, `owner=100`) because
-permissions compare rank; the API speaks words (`"role": "admin"` in member
-responses), so a client doesn't need to know that admin is 50.
+Roles are still stored as numbers and exposed as text (`member=10`, `admin=50`,
+`owner=100`), but only `member` is ever assigned now. `admin` and `owner` remain
+as labels for backwards compatibility with existing databases, not as grants.
 
 | Role | Can |
 |---|---|
-| `owner` | Everything, including deleting the server. Assigned to the first member; can't be removed or handed off via API (`owner_role_immutable`). |
-| `admin` | Manage channels, members and roles. Can't delete the server. |
-| `member` | Chat. Default role for anyone joining. |
+| `member` | Chat. Every join gets this role. |
+| `admin`, `owner` | Legacy labels; no extra permissions. |
 
-Rules enforced by the service layer:
+A member token authenticates chat only. Management authority comes from the
+**source address** of the request:
 
-- only an admin or owner can change roles or kick (`not_admin`);
-- nobody can kick someone with an equal or higher role (`role_hierarchy`), nor
-  themselves (`cannot_kick_self`);
-- the owner can leave on their own, but no one can kick them;
-- changing to or from `owner` is rejected (`owner_role_immutable`).
+- loopback (`127.0.0.1`, `::1`);
+- any address assigned to the host machine;
+- the default gateway (the Docker bridge IP when the node runs in a container).
+
+`GET /api/v1/node` reports `{ "can_manage": true }` for requests from those
+addresses so the client can show the management UI only on the host.
 
 ### Server-management credentials
 
-The endpoints that manage a server (`PATCH`/`DELETE /servers/{id}`, activate,
-deactivate, heartbeat, stats, address details, audit, backup, restore) accept
-**either** of these in `Authorization: Bearer …`:
+The endpoints that manage a server (`POST /servers`, `PATCH`/`DELETE
+/servers/{id}`, activate, deactivate, heartbeat, stats, address details, backup,
+restore, channels, invites, kicks) require the request to come from the host
+machine. Any other source gets 403 `host_required`, even with a valid member
+token or a copy of `HAZEL_ADMIN_TOKEN`.
 
-- the node's `HAZEL_ADMIN_TOKEN`, valid for every server;
-- the **member token of that server's owner**. It is issued automatically by
-  `POST /servers/{id}/join` when the first member joins, so the owner never has
-  to handle a second secret. It is scoped to that server: using it on another
-  server returns 403 `wrong_server`.
+Member tokens (`Authorization: Bearer …`, from `POST /servers/{id}/join`) are
+still required to identify the acting member on endpoints that are inside a
+server, but they do not grant management rights by themselves.
 
-A member or admin token is rejected with 403 `owner_required`. The first member's
-token is generated by the normal join flow, so the owner gets it automatically.
-
-`POST /servers` (create) also accepts either credential: the node token, or the
-owner token of an existing server. The creator of the new server becomes its
-owner.
-
-Custom roles are not implemented. The permission model stays open for you to define.
+Custom roles are not implemented.
 
 ---
 
@@ -369,8 +366,8 @@ means the history ends there.
 exposes `content: null` and `deleted: true`. Replying to or reacting on a
 deleted message returns `409 message_deleted`.
 
-**Ownership rules** (decided): only the author edits a message; the author or
-an admin deletes it. Deleting is soft (`deleted_at`); history stays readable.
+**Ownership rules** (decided): only the author edits or deletes a message.
+Deleting is soft (`deleted_at`); history stays readable.
 
 **Reactions** are free-form (any emoji up to 64 chars), one per member per
 emoji. `POST` is idempotent: reacting twice returns the message unchanged.
@@ -564,12 +561,12 @@ on restart and are not shared between the node and group processes.
 
 | Method | Route | What it does |
 |---|---|---|
-| `[x]` | `POST /api/v1/servers/{server_id}/invites` | Create invite. Admin/owner only. Body: `{ "ttl_seconds": 300, "single_use": false }`. |
+| `[x]` | `POST /api/v1/servers/{server_id}/invites` | Create invite (host only). Body: `{ "ttl_seconds": 300, "single_use": false }`. |
 | `[x]` | `GET /api/v1/invites/{code}` | See/validate invite; consumes single-use invites. |
-| `[x]` | `DELETE /api/v1/invites/{code}` | Revoke. |
+| `[x]` | `DELETE /api/v1/invites/{code}` | Revoke (host only). |
 
 Invites are temporary: `ttl_seconds` (60–604800) sets the lifetime, `single_use`
-flags one-shot consumption. Only admins/owners can create them. Redeeming an
+flags one-shot consumption. Only the host can create or revoke them. Redeeming an
 invite is followed by the nickname join flow (`POST /servers/{server_id}/join`),
 which validates nickname availability per server.
 
@@ -642,10 +639,8 @@ Codes actually emitted by the API, grouped by HTTP status.
 | `invalid_admin_token` | 401 | Wrong/missing node administration token. |
 | `forbidden` | 403 | Default permission error. |
 | `wrong_server` | 403 | Token belongs to a different server than the path. |
-| `not_admin` | 403 | Action requires admin or owner. |
-| `owner_required` | 403 | Only the node owner can do this (e.g. delete group). |
-| `role_hierarchy` | 403 | Kicking someone with an equal or higher role. |
-| `owner_role_immutable` | 403 | Trying to assign or remove the owner role. |
+| `host_required` | 403 | Action requires a request from the host machine. |
+| `not_admin` | 403 | Legacy role error (no role grants management now). |
 | `not_message_author` | 403 | Editing someone else's message. |
 | `not_found` | 404 | Default for a missing resource. |
 | `server_not_found` | 404 | Server doesn't exist. |
@@ -679,7 +674,6 @@ Codes actually emitted by the API, grouped by HTTP status.
 | `request_validation_error` | 422 | FastAPI request validation; includes `errors`. |
 | `validation_error` / `domain_validation_error` | 422 | Body or domain rule doesn't meet the contract. |
 | `cannot_kick_self` | 422 | Use "leave the server" instead. |
-| `invalid_role` | 422 | Unknown `?role=`; includes `allowed`. |
 | `invalid_slug` | 422 | Slug normalizes to empty. |
 | `reply_target_invalid` / `reply_target_deleted` | 422 | Bad `reply_to`. |
 | `invalid_restore_request` / `invalid_backup_path` / `invalid_backup_file` / `backup_server_mismatch` | 422 | Backup validation failed. |
@@ -687,10 +681,10 @@ Codes actually emitted by the API, grouped by HTTP status.
 | `backup_tool_failed` | 500 | `pg_dump` or `pg_restore` exited with an error. |
 | `internal_error` | 500 | Unhandled error. |
 
-`port_taken` and `not_owner` were in an earlier version of this catalog but
-are never emitted: the node allocates ports itself (`no_free_port` when the
-range is exhausted) and owner checks report `owner_required` or
-`role_hierarchy`. Starlette HTTP exceptions use `http_<status>` instead.
+`port_taken`, `not_owner`, `owner_required`, `role_hierarchy` and
+`owner_role_immutable` were in an earlier version of this catalog but are no
+longer emitted: the node allocates ports itself and management checks report
+`host_required`. Starlette HTTP exceptions use `http_<status>` instead.
 
 ---
 
@@ -717,11 +711,11 @@ All the product questions from earlier revisions are now resolved:
    and returns `recommended` plus `candidates`; the client uses the
    recommendation and lets the owner override it.
 4. ~~Server discovery.~~ **Resolved:** invite codes (option B). Invites are
-   temporary (`ttl_seconds`) and admin/owner-only. See section 8.
+   temporary (`ttl_seconds`) and host-only. See section 8.
 5. ~~Where files live.~~ **Resolved:** local disk under `HAZEL_STORAGE_ROOT`.
    See section 9.
-6. ~~Custom roles.~~ **Resolved:** three roles (`member`, `admin`, `owner`) are
-   enough for v1; custom roles come later. See section 4.
+6. ~~Custom roles.~~ **Resolved:** one administrator, the host machine; roles are
+   informational only. See section 4.
 7. ~~Personal name vs nickname.~~ **Resolved:** nickname is per server and is
    requested first on join. There is no global personal name for now.
 8. ~~Backup mechanism.~~ **Resolved:** scheduled logical dumps with

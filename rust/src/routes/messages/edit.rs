@@ -85,11 +85,9 @@ pub(crate) async fn delete_message(
             .with("code", "message_deleted")
             .with("message_id", message.id.to_string()));
     }
-    if !can_touch(&member, &message) && !Role::from_i16(member.role).can_administer() {
-        return Err(ApiError::forbidden(
-            "Only the author or an administrator can delete a message.",
-        )
-        .with("code", "not_message_author"));
+    if !can_touch(&member, &message) {
+        return Err(ApiError::forbidden("Only the author can delete a message.")
+            .with("code", "not_message_author"));
     }
     let mut tx = state.pool.begin().await?;
     sqlx::query("UPDATE messages SET deleted_at = now() WHERE id = $1")

@@ -18,7 +18,6 @@ pub(crate) async fn leave(
     let mut tx = state.pool.begin().await?;
     let server_id = member.server_id;
     let read = MemberRead::from(member.clone());
-    let was_owner = Role::from_i16(member.role) == Role::Owner;
     sqlx::query(
         "UPDATE member_tokens SET revoked_at = now() WHERE member_id = $1 AND revoked_at IS NULL",
     )
@@ -29,9 +28,6 @@ pub(crate) async fn leave(
         .bind(member.id)
         .execute(&mut *tx)
         .await?;
-    if was_owner {
-        promote_oldest(&mut tx, server_id).await?;
-    }
     queue_event(
         &mut tx,
         "member.left",

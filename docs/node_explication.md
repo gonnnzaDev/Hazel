@@ -38,8 +38,8 @@ Keeps one live child process per active group:
   the port reserved.
 - `delete_group()`: kills the process first, then deletes the row
   (the only destructive op).
-- `ensure_can_manage()`: only admins manage groups; only the node OWNER
-  deletes them.
+- `ensure_can_manage()`: only the host machine manages groups (extractor
+  `HostAdmin`); member tokens never grant management rights.
 
 5. PORTS (`repository.py` + `ports.py`)
 Group ports come from `port+1 .. group_port_end`. Inactive groups keep
@@ -111,8 +111,8 @@ Mantiene un proceso hijo vivo por grupo activo:
 - `stop_group()`: mata el proceso, marca INACTIVE, conserva datos y puerto.
 - `delete_group()`: mata el proceso primero y después borra la fila (la
   única operación destructiva).
-- `ensure_can_manage()`: solo admins manejan grupos; solo el OWNER del nodo
-  los elimina.
+- `ensure_can_manage()`: solo la máquina anfitriona maneja grupos (extractor
+  `HostAdmin`); los tokens de miembro nunca otorgan permisos de gestión.
 
 5. PUERTOS (`repository.py` + `ports.py`)
 Los puertos salen de `port+1 .. group_port_end`. Los grupos apagados

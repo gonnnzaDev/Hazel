@@ -79,7 +79,7 @@ pub(crate) async fn create_attachment(
         )
         .with("max_bytes", state.settings.max_attachment_bytes as i64));
     }
-    if !can_touch(&member, &message) && !Role::from_i16(member.role).can_administer() {
+    if !can_touch(&member, &message) {
         return Err(
             ApiError::forbidden("You cannot attach files to this message.")
                 .with("code", "not_message_author"),

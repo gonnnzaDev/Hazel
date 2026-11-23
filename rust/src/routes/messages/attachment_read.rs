@@ -76,7 +76,7 @@ pub(crate) async fn delete_attachment(
             .with("code", "channel_not_found")
             .with("channel_id", message.channel_id.to_string()));
     }
-    if !can_touch(&member, &message) && !Role::from_i16(member.role).can_administer() {
+    if !can_touch(&member, &message) {
         return Err(ApiError::forbidden("You cannot delete this attachment.")
             .with("code", "not_message_author"));
     }

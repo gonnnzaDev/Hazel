@@ -3,23 +3,11 @@ use uuid::Uuid;
 
 use crate::error::{ApiError, ApiResult};
 
-use super::*;
-
 pub(crate) fn require_same_server(member_server: Uuid, server_id: Uuid) -> ApiResult<()> {
     if member_server != server_id {
         return Err(ApiError::forbidden("This token belongs to another server.")
             .with("code", "wrong_server")
             .with("server_id", server_id.to_string()));
-    }
-    Ok(())
-}
-
-pub(crate) fn require_admin(role: i16) -> ApiResult<()> {
-    if !Role::from_i16(role).can_administer() {
-        return Err(
-            ApiError::forbidden("You must be an administrator to manage channels.")
-                .with("code", "not_admin"),
-        );
     }
     Ok(())
 }

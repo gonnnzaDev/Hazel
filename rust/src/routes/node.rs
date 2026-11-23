@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use axum::extract::State;
+use axum::extract::{ConnectInfo, State};
 use axum::routing::get;
 use axum::{Json, Router};
 
@@ -15,7 +15,10 @@ pub fn router() -> Router<Arc<AppState>> {
         .route("/address", get(node_address))
 }
 
-async fn node_info(State(state): State<Arc<AppState>>) -> Json<NodeInfo> {
+async fn node_info(
+    State(state): State<Arc<AppState>>,
+    ConnectInfo(remote): ConnectInfo<std::net::SocketAddr>,
+) -> Json<NodeInfo> {
     Json(NodeInfo {
         service: "hazel-node",
         version: VERSION,
@@ -23,6 +26,7 @@ async fn node_info(State(state): State<Arc<AppState>>) -> Json<NodeInfo> {
         bind_host: state.settings.host.clone(),
         bind_port: state.settings.port,
         is_listening: true,
+        can_manage: state.is_host(remote.ip()),
         kafka_topic_prefix: state.settings.kafka_topic_prefix.clone(),
     })
 }

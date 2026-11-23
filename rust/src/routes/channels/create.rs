@@ -5,7 +5,7 @@ use axum::http::StatusCode;
 use axum::Json;
 use serde_json::json;
 
-use crate::auth::AuthMember;
+use crate::auth::{AuthMember, HostAdmin};
 use crate::error::{ApiError, ApiResult};
 use crate::state::AppState;
 
@@ -15,11 +15,11 @@ pub(crate) async fn create_channel(
     State(state): State<Arc<AppState>>,
     Path(raw_id): Path<String>,
     AuthMember(member): AuthMember,
+    _host: HostAdmin,
     JsonBody(payload): JsonBody<crate::models::ChannelCreate>,
 ) -> ApiResult<(StatusCode, Json<ChannelRead>)> {
     let server_id = path_uuid(&raw_id)?;
     require_same_server(member.server_id, server_id)?;
-    require_admin(member.role)?;
     let name = clean_name(&payload.name)?;
     if name_taken(&state.pool, server_id, &name, None).await? {
         return Err(

@@ -190,10 +190,13 @@ pub(crate) async fn delete_server(
         supervisor.terminate(id).await;
     }
     let slug = row.slug.clone();
-    sqlx::query("DELETE FROM servers WHERE id = $1")
-        .bind(id)
-        .execute(&mut *tx)
-        .await?;
+    // Borrado lógico: el evento y la auditoría siguen referenciando el servidor.
+    sqlx::query(
+        "UPDATE servers SET status = 'deleted'::server_status, updated_at = now() WHERE id = $1",
+    )
+    .bind(id)
+    .execute(&mut *tx)
+    .await?;
     queue_event(
         &mut tx,
         "server.state_changed",

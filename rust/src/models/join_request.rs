@@ -2,6 +2,6 @@ use serde::Deserialize;
 
 #[derive(Debug, Deserialize)]
 pub struct JoinRequest {
-    pub nickname: String,
-    pub display_name: Option<String>,
+    /// Único nombre público del miembro; de él se deriva el identificador interno.
+    pub name: String,
 }

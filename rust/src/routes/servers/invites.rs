@@ -8,7 +8,7 @@ use serde_json::json;
 use sqlx::Transaction;
 use uuid::Uuid;
 
-use crate::auth::AuthMember;
+use crate::auth::{AuthMember, HostAdmin};
 use crate::error::{ApiError, ApiResult};
 use crate::state::AppState;
 
@@ -18,6 +18,7 @@ pub(crate) async fn create_invite(
     State(state): State<Arc<AppState>>,
     Path(raw_id): Path<String>,
     AuthMember(member): AuthMember,
+    _host: HostAdmin,
     JsonBody(payload): JsonBody<InviteCreate>,
 ) -> ApiResult<(StatusCode, Json<InviteRead>)> {
     let id = path_uuid(&raw_id)?;
@@ -26,13 +27,6 @@ pub(crate) async fn create_invite(
         return Err(ApiError::forbidden("You don't have access to this server.")
             .with("code", "wrong_server")
             .with("server_id", id.to_string()));
-    }
-    let role = Role::from_i16(member.role);
-    if !role.can_administer() {
-        return Err(
-            ApiError::forbidden("You must be an administrator to create invites.")
-                .with("code", "not_admin"),
-        );
     }
     if !(60..=2_592_000).contains(&payload.ttl_seconds) {
         return Err(ApiError::request_validation(
@@ -93,6 +87,7 @@ pub(crate) async fn get_invite(
 pub(crate) async fn delete_invite(
     State(state): State<Arc<AppState>>,
     Path(code): Path<String>,
+    _host: HostAdmin,
 ) -> ApiResult<Response> {
     let result = sqlx::query("DELETE FROM invites WHERE code = $1")
         .bind(&code)
