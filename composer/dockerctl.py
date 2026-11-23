@@ -152,3 +152,15 @@ def inspect_all() -> list[dict[str, str]]:
         name, status, image = (line.split("\t") + ["", "", ""])[:3]
         rows.append({"name": name, "status": status, "image": image})
     return rows
+
+
+def stop_all() -> list[str]:
+    """Parar todos los contenedores de Hazel; devuelve los que estaban activos."""
+    stopped: list[str] = []
+    for row in inspect_all():
+        if not row["status"].startswith("Up"):
+            continue
+        name = row["name"]
+        _run(["docker", "stop", name], check=False)
+        stopped.append(name)
+    return stopped

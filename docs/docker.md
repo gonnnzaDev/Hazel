@@ -24,6 +24,14 @@ Los contenedores se llaman `hazel-postgres`, `hazel-kafka` y `hazel-api`
 (`-dev` si usas el perfil por defecto). Los volúmenes se conservan al hacer
 `down` y se borran con `reset`.
 
+Cuando el nodo corre en primer plano con `python -m composer api`, el composer
+es dueño del ciclo de vida completo: al terminar el nodo (Ctrl+C, SIGTERM o
+salida inesperada) reenvía la señal a su grupo de procesos —para que el
+supervisor apague los grupos— y después para todos los contenedores `hazel-*`.
+No borra volúmenes. `python -m composer api --keep-services` conserva los
+servicios en segundo plano si los necesitas para otra sesión. Un `kill -9` del
+composer o un corte de luz no permite esta limpieza.
+
 ## Comandos útiles
 
 ```bash

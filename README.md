@@ -80,6 +80,13 @@ python -m composer check           # fmt + clippy + tests + composer syntax
 python -m composer help            # all commands
 ```
 
+`composer api` owns the whole foreground session: when the node stops (Ctrl+C,
+SIGTERM or a crash), it shuts down its group processes and stops every Hazel
+container (PostgreSQL and Kafka), so nothing is left running in the background.
+Use `python -m composer api --keep-services` if you want to keep them up.
+This does not delete any data. A `kill -9` of the composer process (or a power
+loss) cannot run this cleanup.
+
 In another terminal, create your server:
 
 ```bash
@@ -122,3 +129,7 @@ The API contract lives in [`docs/api.md`](./docs/api.md).
 **Turning off never deletes anything.** If your computer restarts, your servers
 come back turned off but with everything inside. Turn them back on and they
 continue as you left them.
+
+Stopping `composer api` also stops the background stack: PostgreSQL, Kafka and
+any group process spawned by the node. Containers keep their volumes; the next
+`python -m composer up` (or `setup`) brings them back with the data intact.
