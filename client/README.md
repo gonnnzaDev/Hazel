@@ -41,6 +41,8 @@ npm run tauri build
 - Guarda el token en un archivo `0600` del directorio de configuración de la
   app (o `localStorage` si se abre con `npm run dev` en el navegador).
 - Carga historial paginado, envía mensajes y muestra presencia y "escribiendo".
+- Menú único (☰ en la cabecera) con servidores, canales, cambio de nombre,
+  ajustes del servidor (solo en el host) y cierre de sesión.
 - WebSocket con reconexión exponencial y heartbeat cada 30 s.
 - Parsea errores `application/problem+json` y muestra mensajes en español.
 
@@ -48,8 +50,10 @@ npm run tauri build
 
 - Voz/WebRTC (la API tiene signaling, pero el cliente aún no lo consume).
 - Subida/descarga de archivos.
-- Administración (crear canales, roles, invitaciones, backups).
-- Varias sesiones a la vez: el token es **por servidor**, así que cambiar de
-  servidor requiere unirse de nuevo. El riel de servidores es solo informativo.
+- Administración desde otro equipo: crear canales, invitaciones y ajustar el
+  servidor solo funciona en la máquina anfitriona. No hay gestión de roles ni
+  backups en la interfaz.
+- Varias sesiones a la vez: el token es **por servidor**. Desde el menú se puede
+  cambiar entre servidores ya unidos usando su token guardado.
 
 La referencia completa está en [`docs/client.md`](../docs/client.md).

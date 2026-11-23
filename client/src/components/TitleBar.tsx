@@ -2,6 +2,7 @@ import { useEffect, useState, type PointerEvent as ReactPointerEvent } from 'rea
 import { isTauri } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import mark from '../assets/hazel-mark.svg';
+import { useAppStore } from '../state/store';
 
 type Action = 'minimize' | 'maximize' | 'close';
 
@@ -9,6 +10,8 @@ type Action = 'minimize' | 'maximize' | 'close';
 export function TitleBar() {
   const [maximized, setMaximized] = useState(false);
   const native = isTauri();
+  const theme = useAppStore((state) => state.theme);
+  const toggleTheme = useAppStore((state) => state.toggleTheme);
 
   useEffect(() => {
     if (!native) return;
@@ -54,6 +57,15 @@ export function TitleBar() {
       <div className="titlebar-brand" data-tauri-drag-region>
         <img src={mark} alt="" className="titlebar-logo" data-tauri-drag-region />
         <span data-tauri-drag-region>Hazel</span>
+        <button
+          type="button"
+          className="titlebar-theme"
+          onClick={toggleTheme}
+          aria-label={theme === 'light' ? 'Activar modo oscuro' : 'Activar modo claro'}
+          title={theme === 'light' ? 'Modo oscuro' : 'Modo claro'}
+        >
+          <span aria-hidden="true">{theme === 'light' ? '☾' : '☀'}</span>
+        </button>
       </div>
       <div className="titlebar-controls" data-tauri-drag-region>
         <button

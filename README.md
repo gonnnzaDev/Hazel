@@ -81,7 +81,8 @@ python -m composer check           # fmt + clippy + tests + composer syntax
 python -m composer help            # all commands
 ```
 
-In another terminal, create your server:
+In another terminal, on the same machine that runs the node, create your server
+(management requests from other machines are rejected with `host_required`):
 
 ```bash
 curl -X POST localhost:7272/api/v1/servers \
@@ -115,8 +116,9 @@ The API contract lives in [`docs/api.md`](./docs/api.md).
 
 There is an optional PC client under [`client/`](./client/) built with Tauri,
 React and TypeScript. It joins a server with a nickname, shows channels and
-exchanges messages over HTTP + WebSocket. Voice, files and administration are
-not wired up yet. See [`docs/client.md`](./docs/client.md) for the design and
+exchanges messages over HTTP + WebSocket. Server settings (channels, invites,
+lifecycle) are available only when the client runs on the host machine. Voice
+and files are not wired up yet. See [`docs/client.md`](./docs/client.md) for the design and
 [`client/README.md`](./client/README.md) for build instructions.
 
 ```bash

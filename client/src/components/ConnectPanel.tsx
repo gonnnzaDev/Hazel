@@ -1,26 +1,33 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import mark from '../assets/hazel-mark.svg';
 import { useAppStore } from '../state/store';
-import { loadAdminToken } from '../state/session';
+import { ensureNode, loadAdminToken } from '../state/session';
+import { validateCreateServer } from '../utils/validation';
+import { ServerPicker } from './ServerPicker';
 
 type Mode = 'choose' | 'join' | 'create';
 
 export function ConnectPanel() {
   const servers = useAppStore((state) => state.servers);
+  const joined = useAppStore((state) => state.joined);
   const loading = useAppStore((state) => state.loading);
   const join = useAppStore((state) => state.join);
+  const joinWithInvite = useAppStore((state) => state.joinWithInvite);
   const createAndEnter = useAppStore((state) => state.createAndEnter);
   const loadServers = useAppStore((state) => state.loadServers);
 
   const [mode, setMode] = useState<Mode>('choose');
   const [serverId, setServerId] = useState<string | null>(null);
-  const [nickname, setNickname] = useState('');
-  const [displayName, setDisplayName] = useState('');
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [memberName, setMemberName] = useState('');
   const [adminToken, setAdminToken] = useState('');
+  const [startingNode, setStartingNode] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
   const [name, setName] = useState('');
   const [slug, setSlug] = useState('');
   const [description, setDescription] = useState('');
-  const [ownerNickname, setOwnerNickname] = useState('');
+  const [ownerName, setOwnerName] = useState('');
+  const [inviteCode, setInviteCode] = useState('');
 
   useEffect(() => {
     void loadServers();
@@ -29,23 +36,42 @@ export function ConnectPanel() {
     });
   }, [loadServers]);
 
-  const selected = servers.find((server) => server.id === serverId) ?? servers[0] ?? null;
+  // Solo servidores nuevos: ni borrados ni aquellos donde ya tenemos sesión.
+  const newServers = servers.filter(
+    (server) => server.status !== 'deleted' && !joined.some((item) => item.server_id === server.id),
+  );
+  const selected = newServers.find((server) => server.id === serverId) ?? newServers[0] ?? null;
 
   async function handleJoin(event: FormEvent) {
     event.preventDefault();
-    if (!selected || !nickname.trim()) return;
-    await join(selected.id, nickname.trim(), displayName.trim() || undefined);
+    if (!selected || !memberName.trim()) return;
+    await join(selected.id, memberName.trim());
   }
 
   async function handleCreate(event: FormEvent) {
     event.preventDefault();
-    if (!adminToken.trim() || !name.trim() || !slug.trim() || !ownerNickname.trim()) return;
+    if (!adminToken.trim() || !name.trim() || !slug.trim() || !ownerName.trim()) return;
+    const invalid = validateCreateServer({ name, slug, description, ownerName });
+    if (invalid) {
+      setFormError(invalid);
+      return;
+    }
+    setStartingNode(true);
+    setFormError(null);
+    try {
+      await ensureNode();
+    } catch (error) {
+      setFormError(error instanceof Error ? error.message : String(error));
+      setStartingNode(false);
+      return;
+    }
+    setStartingNode(false);
     await createAndEnter(
       {
         name: name.trim(),
         slug: slug.trim(),
         description: description.trim() || null,
-        owner_nickname: ownerNickname.trim(),
+        owner_name: ownerName.trim(),
       },
       adminToken.trim(),
     );
@@ -96,23 +122,34 @@ export function ConnectPanel() {
       <section className="connect-forms">
         {mode === 'choose' && (
           <>
-            <p className="connect-question">¿Qué quieres hacer?</p>
-            <button type="button" className="connect-option" onClick={() => setMode('join')}>
-              <span className="connect-option-icon">↗</span>
-              <span className="connect-option-text">
-                <strong>Unirse</strong>
-                <small>Entra en un servidor existente con tu apodo.</small>
-              </span>
-              <span className="connect-option-arrow">→</span>
-            </button>
-            <button type="button" className="connect-option" onClick={() => setMode('create')}>
-              <span className="connect-option-icon">+</span>
-              <span className="connect-option-text">
-                <strong>Crear servidor</strong>
-                <small>Abre un grupo nuevo en tu nodo.</small>
-              </span>
-              <span className="connect-option-arrow">→</span>
-            </button>
+            <div className="connect-options">
+              <button
+                type="button"
+                className="connect-option connect-option--join"
+                data-num="01"
+                onClick={() => setMode('join')}
+              >
+                <span className="connect-option-icon">↗</span>
+                <span className="connect-option-text">
+                  <strong>Unirse</strong>
+                  <small>Entra en un servidor existente con tu apodo.</small>
+                </span>
+                <span className="connect-option-arrow">→</span>
+              </button>
+              <button
+                type="button"
+                className="connect-option connect-option--create"
+                data-num="02"
+                onClick={() => setMode('create')}
+              >
+                <span className="connect-option-icon">+</span>
+                <span className="connect-option-text">
+                  <strong>Crear servidor</strong>
+                  <small>Abre un grupo nuevo en tu nodo.</small>
+                </span>
+                <span className="connect-option-arrow">→</span>
+              </button>
+            </div>
           </>
         )}
 
@@ -124,67 +161,65 @@ export function ConnectPanel() {
 
             {mode === 'join' && (
               <form onSubmit={(event) => void handleJoin(event)} className="stack">
-                <p className="connect-question">Unirse a un servidor</p>
-                <label>
-                  Servidor
-                  <select
-                    value={selected?.id ?? ''}
-                    onChange={(event) => setServerId(event.target.value)}
-                    disabled={servers.length === 0}
-                  >
-                    {servers.length === 0 && <option value="">No hay servidores disponibles</option>}
-                    {servers.map((server) => (
-                      <option key={server.id} value={server.id}>
-                        {server.name} · {server.slug} ({server.status})
-                      </option>
-                    ))}
-                  </select>
-                </label>
+                <p className="connect-question">Unirse a un servidor nuevo</p>
+                <button
+                  type="button"
+                  className="server-picker-trigger"
+                  onClick={() => setPickerOpen(true)}
+                  disabled={newServers.length === 0}
+                >
+                  <span className="server-picker-icon" aria-hidden="true">▦</span>
+                  <span className="server-picker-text">
+                    <strong>{selected ? selected.name : 'Elige un servidor'}</strong>
+                    <span className="muted">
+                      {selected ? `/${selected.slug} · ${selected.status}` : 'Ver servidores nuevos'}
+                    </span>
+                  </span>
+                  <span className="server-picker-arrow" aria-hidden="true">→</span>
+                </button>
+                {newServers.length === 0 && (
+                  <p className="muted">
+                    Ya estás en todos los servidores de este nodo, o crea uno nuevo desde el inicio.
+                  </p>
+                )}
                 {selected && <p className="muted">{selected.description ?? 'Sin descripción'}</p>}
                 <label>
-                  Apodo
+                  Tu nombre
                   <input
-                    value={nickname}
-                    onChange={(event) => setNickname(event.target.value)}
-                    placeholder="ana"
+                    value={memberName}
+                    onChange={(event) => setMemberName(event.target.value)}
+                    placeholder="Ana"
                     minLength={2}
-                    maxLength={32}
+                    maxLength={64}
                     autoComplete="nickname"
                   />
                 </label>
-                <label>
-                  Nombre visible <span className="muted">(opcional)</span>
-                  <input
-                    value={displayName}
-                    onChange={(event) => setDisplayName(event.target.value)}
-                    placeholder="Ana"
-                  />
-                </label>
-                <button type="submit" disabled={loading || !selected || !nickname.trim()}>
+                <button type="submit" disabled={loading || !selected || !memberName.trim()}>
                   Unirse
                 </button>
+                <div className="connect-invite">
+                  <p className="group-label">¿TIENES UN CÓDIGO?</p>
+                  <input
+                    value={inviteCode}
+                    onChange={(event) => setInviteCode(event.target.value)}
+                    placeholder="Código de invitación"
+                    aria-label="Código de invitación"
+                  />
+                  <button
+                    type="button"
+                    className="header-ghost"
+                    disabled={loading || !inviteCode.trim() || !memberName.trim()}
+                    onClick={() => void joinWithInvite(inviteCode, memberName)}
+                  >
+                    Usar invitación
+                  </button>
+                </div>
               </form>
             )}
 
             {mode === 'create' && (
               <form onSubmit={(event) => void handleCreate(event)} className="stack">
                 <p className="connect-question">Crear un servidor</p>
-                <label>
-                  Token de administración del nodo
-                  <input
-                    type="password"
-                    value={adminToken}
-                    onChange={(event) => setAdminToken(event.target.value)}
-                    placeholder="HAZEL_ADMIN_TOKEN"
-                    autoComplete="off"
-                    spellCheck={false}
-                  />
-                </label>
-                <p className="muted">
-                  Se rellena solo desde el <code>.env</code> local. Solo se usa
-                  para crear: al unirte como dueño obtienes automáticamente tu
-                  token de servidor para administrarlo después.
-                </p>
                 <label>
                   Nombre del servidor
                   <input value={name} onChange={(event) => setName(event.target.value)} placeholder="Luis House" />
@@ -207,30 +242,36 @@ export function ConnectPanel() {
                   />
                 </label>
                 <label>
-                  Tu apodo de dueño
+                  Tu nombre
                   <input
-                    value={ownerNickname}
-                    onChange={(event) => setOwnerNickname(event.target.value)}
-                    placeholder="luis"
+                    value={ownerName}
+                    onChange={(event) => setOwnerName(event.target.value)}
+                    placeholder="Luis"
                     minLength={2}
-                    maxLength={32}
+                    maxLength={64}
                   />
                 </label>
+                {formError && <p className="muted">{formError}</p>}
                 <button
                   type="submit"
-                  disabled={loading || !adminToken.trim() || !name.trim() || !slug.trim() || !ownerNickname.trim()}
+                  disabled={loading || startingNode || !adminToken.trim() || !name.trim() || !slug.trim() || !ownerName.trim()}
                 >
-                  Crear servidor
+                  {startingNode ? 'Iniciando nodo…' : 'Crear servidor'}
                 </button>
               </form>
             )}
           </>
         )}
 
-        <p className="fineprint">
-          No hay cuentas: el apodo identifica a cada persona dentro de este servidor.
-        </p>
       </section>
+
+      <ServerPicker
+        open={pickerOpen}
+        servers={newServers}
+        selectedId={selected?.id ?? null}
+        onSelect={setServerId}
+        onClose={() => setPickerOpen(false)}
+      />
     </div>
   );
 }
