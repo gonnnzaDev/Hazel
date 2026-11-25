@@ -10,8 +10,10 @@ from __future__ import annotations
 import argparse
 import os
 import shutil
+import signal
 import subprocess
 import sys
+import time
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -261,6 +263,66 @@ def cmd_ps(args: argparse.Namespace) -> None:
         print(f"{row['name']:<24} {row['status']:<28} {row['image']}")
 
 
+# ─── Ciclo de vida del nodo en primer plano ──────────────────────────────────
+
+NODE_SHUTDOWN_TIMEOUT = 15.0
+
+
+def _signal_node(proc: subprocess.Popen[str], sig: int) -> None:
+    """Enviar la señal al nodo y a los procesos grupo que él lanzó.
+
+    El nodo se arranca con ``start_new_session=True``: su pgid es su pid, así
+    que ``killpg`` alcanza también a los hijos que el supervisor haya creado.
+    """
+    if os.name == "posix":
+        try:
+            os.killpg(proc.pid, sig)
+            return
+        except (ProcessLookupError, PermissionError):
+            pass
+    try:
+        proc.send_signal(sig)
+    except (ProcessLookupError, OSError, ValueError):
+        pass
+
+
+def _wait_node(proc: subprocess.Popen[str], timeout: float) -> bool:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if proc.poll() is not None:
+            return True
+        time.sleep(0.1)
+    return proc.poll() is not None
+
+
+def _stop_node(proc: subprocess.Popen[str]) -> None:
+    if proc.poll() is None:
+        say("Apagando el nodo y sus procesos grupo")
+        _signal_node(proc, signal.SIGTERM)
+        if not _wait_node(proc, NODE_SHUTDOWN_TIMEOUT):
+            warn("el nodo no respondió a SIGTERM; forzando SIGKILL")
+            _signal_node(proc, signal.SIGKILL)
+            _wait_node(proc, 5.0)
+    elif os.name == "posix":
+        # El nodo ya salió, pero un crash puede dejar procesos grupo huérfanos.
+        _signal_node(proc, signal.SIGTERM)
+
+
+def _stop_background_services(args: argparse.Namespace) -> None:
+    if getattr(args, "keep_services", False):
+        warn("servicios en segundo plano conservados (--keep-services)")
+        return
+    if not dockerctl.available():
+        return
+    try:
+        stopped = dockerctl.stop_all()
+    except DockerError as exc:
+        warn(f"no se pudieron parar los servicios en segundo plano: {exc}")
+        return
+    for name in stopped:
+        say(f"Parando {name}")
+
+
 def cmd_api(args: argparse.Namespace) -> None:
     values = env.read_env()
     if not values.get("HAZEL_SECRET_KEY"):
@@ -272,9 +334,42 @@ def cmd_api(args: argparse.Namespace) -> None:
     port = args.port or int(env.get(values, "HAZEL_PORT", "7272"))
     command = [str(BINARY), "node", f"--host={host}", f"--port={port}"]
     say(" ".join(command))
-    raise SystemExit(subprocess.run(
-        command, cwd=ROOT, env=env.rust_env(values, "localhost", port)
-    ).returncode)
+    try:
+        proc = subprocess.Popen(
+            command,
+            cwd=ROOT,
+            env=env.rust_env(values, "localhost", port),
+            start_new_session=(os.name == "posix"),
+        )
+    except OSError as exc:
+        die(f"no se pudo arrancar el nodo: {exc}")
+
+    previous: dict[int, object] = {}
+
+    def forward(signum: int, _frame: object) -> None:
+        # El nodo ya hace shutdown graceful de grupos, Kafka y DB.
+        _signal_node(proc, signum)
+
+    if os.name == "posix":
+        for sig in (signal.SIGINT, signal.SIGTERM):
+            previous[sig] = signal.getsignal(sig)
+            signal.signal(sig, forward)
+
+    try:
+        while proc.poll() is None:
+            time.sleep(0.2)
+        code = proc.returncode or 0
+    except KeyboardInterrupt:
+        _signal_node(proc, signal.SIGINT)
+        _wait_node(proc, NODE_SHUTDOWN_TIMEOUT)
+        code = proc.returncode or 130
+    finally:
+        for sig, handler in previous.items():
+            signal.signal(sig, handler)  # type: ignore[arg-type]
+        _stop_node(proc)
+        _stop_background_services(args)
+
+    raise SystemExit(code)
 
 
 def cmd_migrate(args: argparse.Namespace) -> None:
@@ -402,6 +497,8 @@ def parser() -> argparse.ArgumentParser:
     api = sub.add_parser("api", help="ejecuta el nodo Rust en esta máquina")
     api.add_argument("--host")
     api.add_argument("--port", type=int)
+    api.add_argument("--keep-services", action="store_true",
+                     help="no parar PostgreSQL/Kafka cuando termine el nodo")
     api.set_defaults(func=cmd_api)
 
     sub.add_parser("migrate", help="aplica las migraciones SQL").set_defaults(func=cmd_migrate)

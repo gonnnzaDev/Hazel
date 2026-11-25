@@ -37,6 +37,10 @@ python -m composer check       # fmt + clippy + tests + sintaxis del composer
 python -m composer help        # todos los comandos
 ```
 
+`composer api` se encarga de apagar todo al salir: grupos supervisados,
+PostgreSQL y Kafka. Si necesitas conservar los servicios para otra sesión, usa
+`python -m composer api --keep-services`. Los datos no se borran.
+
 Si no tienes Docker, `setup` igual genera `.env` y compila el binario. Apunta
 `HAZEL_DATABASE_URL` y `HAZEL_KAFKA_BOOTSTRAP_SERVERS` a tus propios servicios
 y ejecuta `python -m composer migrate` cuando la base esté accesible.
